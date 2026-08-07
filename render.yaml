@@ -1,0 +1,28 @@
+# Render Blueprint — Colyseus match server only.
+#
+# The Next.js app deploys to Vercel, not here. This file describes the one
+# piece of infrastructure that cannot be serverless: the authoritative,
+# always-on match server.
+#
+# Free-tier behaviour worth remembering (see docs/concerns/07-cost-infra.md):
+#   - Spins down after ~15 minutes with no traffic; the next connection pays a
+#     ~50s cold start.
+#   - An open WebSocket counts as traffic, so a live match is never interrupted
+#     mid-game by the idle timer.
+#   - Reassess at Phase 07, where a cold start becomes a player-facing queue
+#     failure rather than a developer annoyance.
+
+services:
+  - type: web
+    name: empire-live-server
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: ./server
+    healthCheckPath: /healthz
+    envVars:
+      # Comma-separated list of origins allowed to reserve a seat.
+      # Set this to your Vercel URL once the app is deployed.
+      - key: ALLOWED_ORIGINS
+        sync: false

@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Empire Live — "Stadium Floodlight"
+   Single source of truth: docs/04-design-system.md
+   Every value below is a token from that doc. Components consume these; they
+   never hardcode a hex, a font, or a radius.
+   ───────────────────────────────────────────────────────────────────────────*/
+
+@theme {
+  /* Color — see docs/04-design-system.md § Color */
+  --color-void: #0a0d12;
+  --color-floodlight: #f3f6fb;
+  --color-signal: #35c7a6;
+  --color-tally: #e8362e;
+  --color-pitch-shadow: #132018;
+  --color-steel: #3e4a59;
+
+  /* Type — display is condensed and does real work; mono is for live numbers */
+  --font-display: var(--font-big-shoulders), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  /* Layout signature — the chamfer. One diagonal cut, top-left by default. */
+  --chamfer: 14px;
+  --chamfer-edge: 2px;
+
+  /* No rounding anywhere in the system, on anything. */
+  --radius-none: 0px;
+
+  /* Motion — hover/focus is near-instant by design; this is a data-dense,
+     live-stakes product, not a portfolio site. */
+  --duration-instant: 120ms;
+}
+
+/* Derived states. Per the design system, these are computed from the tokens
+   above — do NOT add new named colors for them. */
+@utility text-muted {
+  color: color-mix(in srgb, var(--color-floodlight) 45%, transparent);
+}
+
+@layer base {
+  * {
+    /* Enforced globally: the system has no rounded corners. */
+    border-radius: var(--radius-none);
+  }
+
+  body {
+    background: var(--color-void);
+    color: var(--color-floodlight);
+    font-family: var(--font-sans);
+  }
+
+  /* Visible keyboard focus on every interactive element, using `signal`.
+     Accessibility floor — non-negotiable. */
+  :focus-visible {
+    outline: 2px solid var(--color-signal);
+    outline-offset: 2px;
+  }
+
+  /* Any number that updates live must not reflow as it changes. */
+  .tabular,
+  input[type="number"] {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ─── The clipped panel ───────────────────────────────────────────────────────
+   The signature structural device: one chamfered corner (top-left), never a
+   border-radius. Reserved for panels/cards — never applied to buttons or
+   inputs, so it stays meaningful rather than decorative.
+
+   Two layers, because clip-path also clips borders: the outer element paints
+   the 1px `steel` edge, the inner element paints the `pitch-shadow` fill.
+   ───────────────────────────────────────────────────────────────────────────*/
+
+@utility panel {
+  position: relative;
+  padding: 1px;
+  background: color-mix(in srgb, var(--color-steel) 30%, transparent);
+  clip-path: polygon(
+    var(--chamfer) 0,
+    100% 0,
+    100% 100%,
+    0 100%,
+    0 var(--chamfer)
+  );
+
+  /* The 2px edge-line traces the chamfered edge ONLY, never the full border.
+     `signal` for a standard panel; `tally` only when the panel is genuinely
+     live or urgent (see .panel-live). */
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    width: calc(var(--chamfer) * 1.4142);
+    height: var(--chamfer-edge);
+    background: var(--color-signal);
+    transform-origin: 0 0;
+    transform: translateY(var(--chamfer)) rotate(-45deg);
+  }
+}
+
+@utility panel-body {
+  position: relative;
+  height: 100%;
+  background: var(--color-pitch-shadow);
+  clip-path: polygon(
+    calc(var(--chamfer) - 1px) 0,
+    100% 0,
+    100% 100%,
+    0 100%,
+    0 calc(var(--chamfer) - 1px)
+  );
+}
+
+/* Live/urgent panel — same shape, `tally` edge-line. Only for something that
+   is actually in progress. */
+@utility panel-live {
+  &::before {
+    background: var(--color-tally);
+  }
+}
+
+/* ─── The tally dot ───────────────────────────────────────────────────────────
+   A broadcast camera's tally light. Means live, and only live. If nothing is
+   actually live, there is no dot. Always paired with the word "LIVE" in
+   markup — color is never the only signal.
+   ───────────────────────────────────────────────────────────────────────────*/
+
+@utility tally-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background: var(--color-tally);
+  border-radius: 50%; /* the one intentional circle: it models a light, not a corner */
+  animation: tally-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tally-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Respected everywhere, including the landing page's running-clock moment. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

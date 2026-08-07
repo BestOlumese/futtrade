@@ -1,0 +1,15 @@
+import "dotenv/config";
+import { defineConfig } from "drizzle-kit";
+
+export default defineConfig({
+  dialect: "postgresql",
+  schema: "./lib/db/schema.ts",
+  out: "./drizzle",
+  dbCredentials: {
+    url: process.env.DATABASE_URL!,
+  },
+  // Keep generated SQL reviewable — this project treats the schema as the
+  // spine of the system, so migrations are read, not rubber-stamped.
+  verbose: true,
+  strict: true,
+});

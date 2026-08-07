@@ -1,0 +1,24 @@
+{
+  "name": "empire-live-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Empire Live — authoritative Colyseus match server. Deployed separately from the Next.js app; never serverless.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node build/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@colyseus/ws-transport": "^0.16.0",
+    "colyseus": "^0.16.0",
+    "express": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "tsx": "^4.23.11",
+    "typescript": "^5.0.0"
+  }
+}
