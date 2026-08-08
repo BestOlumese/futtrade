@@ -66,15 +66,63 @@ function nameOf(team: Team, idx: number): string {
    that's drawn somewhere else.
    ──────────────────────────────────────────────────────────────────────────*/
 
+/**
+ * Pitch geometry, to scale.
+ *
+ * Coordinates are 0–100 across the PLAYING AREA in both axes, so x and y have
+ * different metre scales (105m over 100 x-units, 68m over 100 y-units). That
+ * matters: a circle on the grass is an ellipse in these coordinates, which is
+ * why the arc radii below differ.
+ *
+ * The goal lines are the playing-area edges (x = 0 and x = 100) and the nets sit
+ * outside them, as on a real diagram. An earlier version put the goal line at
+ * x = 97 with pitch behind it, and drew the penalty area from x = 86 to 100 —
+ * so the box overlapped the goal and ran past the line, and the penalty spot was
+ * measured off nothing.
+ */
+const M_PER_X = 105 / 100;
+const M_PER_Y = 68 / 100;
+const YARD_M = 0.9144;
+
+export const PITCH = {
+  lengthM: 105,
+  widthM: 68,
+  netDepthM: 2,
+  /** Along the pitch, from a goal line. */
+  penaltyAreaDepth: 16.5 / M_PER_X, // 15.71
+  sixYardDepth: 5.5 / M_PER_X, // 5.24
+  penaltySpotDepth: 11 / M_PER_X, // 10.48
+  netDepth: 2 / M_PER_X, // 1.90
+  /** Across the pitch, from the centre line. */
+  goalHalfWidth: 7.32 / 2 / M_PER_Y, // 5.38
+  penaltyAreaHalfWidth: 40.32 / 2 / M_PER_Y, // 29.65
+  sixYardHalfWidth: 18.32 / 2 / M_PER_Y, // 13.47
+  /** 9.15m, which is an ellipse in these coordinates. */
+  arcRx: 9.15 / M_PER_X, // 8.71
+  arcRy: 9.15 / M_PER_Y, // 13.46
+  cornerRx: 1 / M_PER_X,
+  cornerRy: 1 / M_PER_Y,
+};
+
 export const GOAL = {
-  yTop: 37,
-  yBottom: 63,
-  /** Goal line, home end / away end. */
-  lineLeft: 3,
-  lineRight: 97,
-  /** Back of the net. */
-  backLeft: 0,
-  backRight: 100,
+  yTop: 50 - PITCH.goalHalfWidth, // 44.62
+  yBottom: 50 + PITCH.goalHalfWidth, // 55.38
+  lineLeft: 0,
+  lineRight: 100,
+};
+
+/** Distance from a goal line, in yards, as an x coordinate. */
+export function yardsFromGoal(yards: number, end: "left" | "right"): number {
+  const units = (yards * YARD_M) / M_PER_X;
+  return end === "right" ? 100 - units : units;
+}
+
+/** Where the ball comes to rest in the net. */
+const NET_REST = PITCH.netDepth * 0.55; // ~1.05 units past the line
+
+export const PENALTY_SPOT_RIGHT: Point = {
+  x: 100 - PITCH.penaltySpotDepth,
+  y: 50,
 };
 
 /* ── Acts ────────────────────────────────────────────────────────────────── */
@@ -237,6 +285,10 @@ type Beat = {
     placement?: string;
     /** Exact landing point. The drawn line ends here too. */
     target?: Point;
+    /** Where it is struck FROM. The shooter runs here before striking, so the
+     *  stated distance is the distance actually shot from. */
+    from?: Point;
+    distanceYards?: number;
     /** Perpendicular bend: a curled, dipped or whipped strike. */
     bend?: number;
     priceStep?: number;
@@ -249,6 +301,8 @@ type Beat = {
     reason: string;
     card?: "yellow" | "red";
     awards?: "freekick" | "penalty";
+    /** The carrier runs here, so the foul genuinely happens at this point. */
+    spot?: Point;
   };
   note?: { type: "Sub"; detail: string };
 };
@@ -265,9 +319,18 @@ const CARD_FOUL = 41_500;
 const FK_FOUL = 58_500;
 const PEN_FOUL = 104_000;
 
-/** Set-piece spots, in pitch percentages. */
-export const FREEKICK_SPOT: Point = { x: 76, y: 44 };
-export const PENALTY_SPOT: Point = { x: 86, y: 50 };
+/**
+ * Where fouls happen. The free kick is taken from exactly this point; the
+ * penalty is taken from the real penalty spot regardless, as in the laws.
+ * Both are reached by the carrier genuinely running there, not by teleporting.
+ */
+const FK_FOUL_SPOT: Point = { x: yardsFromGoal(22, "right"), y: 41 };
+const PEN_FOUL_SPOT: Point = { x: yardsFromGoal(9, "right"), y: 47 };
+
+/** In the net, at the target's height. */
+function inNet(y: number): Point {
+  return { x: 100 + NET_REST, y };
+}
 
 const BEATS: Beat[] = [
   /* ── Act 1 — build-up to a curled finish ── */
@@ -279,13 +342,19 @@ const BEATS: Beat[] = [
   { at: 10_000, team: "home", idx: 7, via: "pass", action: "pass" },
   {
     at: 12_000, team: "home", idx: 8, via: "pass", action: "shot",
-    shot: { outcome: "blocked", xg: 0.09, note: "blocked", priceStep: 0.02 },
+    shot: {
+      outcome: "blocked", xg: 0.09, note: "blocked", priceStep: 0.02,
+      from: { x: yardsFromGoal(20, "right"), y: 40 }, distanceYards: 20,
+    },
   },
   { at: 14_500, team: "away", idx: 3, via: "block", action: "pass" },
   { at: 16_500, team: "away", idx: 6, via: "pass", action: "pass" },
   {
     at: 18_500, team: "away", idx: 9, via: "pass", action: "shot",
-    shot: { outcome: "saved", xg: 0.31, note: "low to the right" },
+    shot: {
+      outcome: "saved", xg: 0.31, note: "low to the right",
+      from: { x: yardsFromGoal(14, "left"), y: 55 }, distanceYards: 14,
+    },
   },
   { at: 21_000, team: "home", idx: 0, via: "save", action: "pass" },
   { at: 23_000, team: "home", idx: 3, via: "pass", action: "pass" },
@@ -295,8 +364,9 @@ const BEATS: Beat[] = [
     at: 29_000, team: "home", idx: 9, via: "pass", action: "shot",
     shot: {
       outcome: "goal", xg: 0.44, note: "curled with the left foot",
-      placement: "far corner", target: { x: 98.5, y: 61 }, bend: 12,
-      priceStep: 0.27,
+      placement: "far corner", distanceYards: 18,
+      from: { x: yardsFromGoal(18, "right"), y: 63 },
+      target: inNet(45.8), bend: -7, priceStep: 0.27,
     },
   },
   { at: G1, team: "home", idx: 9, via: "goal", action: "pass" },
@@ -323,14 +393,18 @@ const BEATS: Beat[] = [
   { at: 55_500, team: "home", idx: 10, via: "pass", action: "pass" },
   {
     at: 57_000, team: "home", idx: 9, via: "pass", action: "foul",
-    foulBy: { team: "away", idx: 3, reason: "trip on the edge", awards: "freekick" },
+    foulBy: {
+      team: "away", idx: 3, reason: "trip on the edge of the box",
+      awards: "freekick", spot: FK_FOUL_SPOT,
+    },
   },
   {
+    // Taken from exactly where the foul happened.
     at: FK_FOUL, team: "home", idx: 9, via: "freekick", action: "shot",
     shot: {
       outcome: "goal", xg: 0.28, note: "free kick, over the wall",
-      placement: "top corner", target: { x: 98.5, y: 40 }, bend: -13,
-      priceStep: 0.22,
+      placement: "far corner", distanceYards: 22,
+      from: FK_FOUL_SPOT, target: inNet(54.4), bend: 8, priceStep: 0.22,
     },
   },
   { at: G2, team: "home", idx: 9, via: "goal", action: "pass" },
@@ -339,7 +413,10 @@ const BEATS: Beat[] = [
   { at: G2, team: "away", idx: 6, via: "kickoff", action: "pass" },
   {
     at: 62_000, team: "away", idx: 9, via: "pass", action: "shot",
-    shot: { outcome: "saved", xg: 0.22, note: "tipped over" },
+    shot: {
+      outcome: "saved", xg: 0.22, note: "tipped over",
+      from: { x: yardsFromGoal(16, "left"), y: 46 }, distanceYards: 16,
+    },
   },
   { at: 64_500, team: "home", idx: 0, via: "save", action: "pass" },
   { at: 66_500, team: "home", idx: 3, via: "pass", action: "pass" },
@@ -347,7 +424,10 @@ const BEATS: Beat[] = [
   { at: 70_500, team: "home", idx: 7, via: "pass", action: "pass" },
   {
     at: 72_500, team: "home", idx: 8, via: "pass", action: "shot",
-    shot: { outcome: "off", xg: 0.12, note: "over", priceStep: 0.03 },
+    shot: {
+      outcome: "off", xg: 0.12, note: "wide", priceStep: 0.03,
+      from: { x: yardsFromGoal(24, "right"), y: 56 }, distanceYards: 24,
+    },
   },
   { at: 75_000, team: "away", idx: 0, via: "goalkick", action: "pass" },
   { at: 77_000, team: "away", idx: 5, via: "pass", action: "pass" },
@@ -357,9 +437,10 @@ const BEATS: Beat[] = [
   {
     at: 85_500, team: "home", idx: 6, via: "pass", action: "shot",
     shot: {
-      outcome: "goal", xg: 0.07, note: "from 25 yards",
-      placement: "top corner", target: { x: 98.5, y: 38 }, bend: 5,
-      priceStep: 0.19,
+      outcome: "goal", xg: 0.07, note: "struck from distance",
+      placement: "inside the post", distanceYards: 25,
+      from: { x: yardsFromGoal(25, "right"), y: 50 },
+      target: inNet(45.4), bend: 4, priceStep: 0.19,
     },
   },
   { at: G3, team: "home", idx: 6, via: "goal", action: "pass" },
@@ -374,13 +455,19 @@ const BEATS: Beat[] = [
   { at: 100_000, team: "home", idx: 6, via: "pass", action: "pass" },
   {
     at: 102_000, team: "home", idx: 9, via: "pass", action: "foul",
-    foulBy: { team: "away", idx: 2, reason: "clumsy in the box", awards: "penalty" },
+    foulBy: {
+      team: "away", idx: 2, reason: "clumsy challenge in the area",
+      awards: "penalty", spot: PEN_FOUL_SPOT,
+    },
   },
   {
+    // Taken from the penalty spot, wherever in the area the foul happened —
+    // as in the laws.
     at: PEN_FOUL, team: "home", idx: 9, via: "penalty", action: "shot",
     shot: {
       outcome: "goal", xg: 0.79, note: "penalty",
-      placement: "keeper sent the wrong way", target: { x: 98.5, y: 59 },
+      placement: "keeper sent the wrong way", distanceYards: 12,
+      from: PENALTY_SPOT_RIGHT, target: inNet(53.9),
       priceStep: 0.31, keeperWrongWay: true,
     },
   },
@@ -390,7 +477,11 @@ const BEATS: Beat[] = [
 function beatAt(playTime: number) {
   let i = 0;
   for (let k = 0; k < BEATS.length - 1; k++) if (BEATS[k].at <= playTime) i = k;
-  return { beat: BEATS[i], next: BEATS[i + 1] ?? BEATS[0] };
+  return {
+    beat: BEATS[i],
+    next: BEATS[i + 1] ?? BEATS[0],
+    prev: i > 0 ? BEATS[i - 1] : undefined,
+  };
 }
 
 function shotFireTime(beat: Beat, next: Beat): number {
@@ -495,21 +586,30 @@ export type SetPiece = {
   staged: number;
 };
 
-/** Active from the moment play stops until the ball is struck. */
+const FK_BEAT = BEATS.find((b) => b.via === "freekick" && b.action === "shot")!;
+const PEN_BEAT = BEATS.find((b) => b.via === "penalty")!;
+
+/**
+ * Active from the moment play stops until the ball is struck.
+ *
+ * The spot is the taker's own strike point, so the tag, the wall and the ball
+ * are all placed off one value. For the free kick that point is where the foul
+ * happened; for the penalty it is the penalty spot, as in the laws.
+ */
 function setPieceAt(t: number): SetPiece | null {
   const act = actAt(t);
   for (const [s0] of act.stoppages) {
-    // Only the stoppage that immediately precedes this act's goal stages a set
+    // Only the stoppage immediately preceding this act's goal stages a set
     // piece; the booking earlier in act 2 does not.
-    const isSetPiece =
-      (act === ACTS[1] && s0 === 71_000) || (act === ACTS[3] && s0 === 136_000);
-    if (!isSetPiece) continue;
+    const penalty = act === ACTS[3] && s0 === 136_000;
+    const freekick = act === ACTS[1] && s0 === 71_000;
+    if (!penalty && !freekick) continue;
     if (t >= s0 && t < act.goalAt) {
-      const penalty = act === ACTS[3];
+      const beat = penalty ? PEN_BEAT : FK_BEAT;
       return {
         kind: penalty ? "penalty" : "freekick",
         label: penalty ? "Penalty" : "Free kick",
-        spot: penalty ? PENALTY_SPOT : FREEKICK_SPOT,
+        spot: beat.shot!.from!,
         staged: clamp((t - s0) / 900, 0, 1),
       };
     }
@@ -519,15 +619,16 @@ function setPieceAt(t: number): SetPiece | null {
 
 /* ── Formations and per-player character ─────────────────────────────────── */
 
+/** Keepers sit just off their goal line, inside the six-yard box. */
 const HOME_SHAPE: [number, number][] = [
-  [6, 50],
+  [2.5, 50],
   [19, 18], [19, 40], [19, 60], [19, 82],
   [36, 28], [36, 50], [36, 72],
   [55, 20], [55, 50], [55, 80],
 ];
 
 const AWAY_SHAPE: [number, number][] = [
-  [94, 50],
+  [97.5, 50],
   [81, 18], [81, 40], [81, 60], [81, 82],
   [64, 28], [64, 50], [64, 72],
   [45, 24], [45, 50], [45, 76],
@@ -621,7 +722,53 @@ function basePlayers(t: number, team: Team): Point[] {
   });
 }
 
-/** The away players who form a wall, and the keeper's line position. */
+const APPROACH_MS = 1_400;
+
+/**
+ * The run-up. Blends a player onto a scripted point over the moments before it
+ * matters, so he arrives there by running rather than by being placed.
+ *
+ * Set-piece takers are handled by `applySetPiece` instead, which runs after this
+ * and fully overrides — during a stoppage play time is frozen, so an approach
+ * driven by play time would stall halfway.
+ */
+function applyApproach(
+  home: Point[],
+  away: Point[],
+  beat: Beat,
+  next: Beat,
+  playTime: number,
+  prev?: Beat,
+): void {
+  const mine = beat.team === "home" ? home : away;
+  const ease = (p: number) => p * p * (3 - 2 * p);
+
+  /* A restart begins where the offence ended. Without this the carrier's run-up
+     stops the instant the beat changes and he snaps back to formation, so the
+     ball appeared nowhere near the foul. `applySetPiece` then walks him on from
+     here — a no-op for the free kick, since it's taken from that same spot, and
+     a walk to the penalty spot for a penalty. */
+  if (
+    (beat.via === "freekick" || beat.via === "penalty") &&
+    prev?.foulBy?.spot
+  ) {
+    mine[beat.idx] = { ...prev.foulBy.spot };
+    return;
+  }
+
+  if (beat.action === "shot" && beat.shot?.from) {
+    const arriveBy = shotFireTime(beat, next);
+    const p = clamp((playTime - (arriveBy - APPROACH_MS)) / APPROACH_MS, 0, 1);
+    if (p > 0) mine[beat.idx] = lerp(mine[beat.idx], beat.shot.from, ease(p));
+  }
+
+  if (beat.action === "foul" && beat.foulBy?.spot) {
+    const p = clamp((playTime - (next.at - APPROACH_MS)) / APPROACH_MS, 0, 1);
+    if (p > 0) mine[beat.idx] = lerp(mine[beat.idx], beat.foulBy.spot, ease(p));
+  }
+}
+
+/** The away players who form a wall. */
 const WALL_IDXS = [2, 3, 5, 6];
 
 /**
@@ -641,7 +788,7 @@ function applySetPiece(
   const theirs = taker.team === "home" ? away : home;
 
   mine[taker.idx] = lerp(mine[taker.idx], piece.spot, p);
-  theirs[0] = lerp(theirs[0], { x: GOAL.lineRight - 1.5, y: 50 }, p);
+  theirs[0] = lerp(theirs[0], { x: GOAL.lineRight - 2, y: 50 }, p);
 
   if (piece.kind === "freekick") {
     const dx = target.x - piece.spot.x;
@@ -662,7 +809,7 @@ function applySetPiece(
     });
   } else {
     // Penalty: everyone except taker and keeper clears the box.
-    const boxEdge = 74;
+    const boxEdge = 100 - PITCH.penaltyAreaDepth; // the real edge of the area
     theirs.forEach((pt, idx) => {
       if (idx === 0) return;
       if (pt.x > boxEdge) theirs[idx] = lerp(pt, { x: boxEdge - 3, y: pt.y }, p);
@@ -700,7 +847,10 @@ function shotEndPoint(beat: Beat, collector: Point): Point {
   const shot = beat.shot!;
   if (shot.target) return shot.target;
   if (shot.outcome === "off") {
-    return beat.team === "home" ? { x: 99, y: 26 } : { x: 1, y: 74 };
+    // Wide of the post, past the goal line.
+    return beat.team === "home"
+      ? { x: 100 + NET_REST, y: GOAL.yTop - 7 }
+      : { x: -NET_REST, y: GOAL.yBottom + 7 };
   }
   return collector;
 }
@@ -851,13 +1001,19 @@ export function matchStateAt(rawT: number): MatchState {
   const playTime = playClockAt(t);
   const past = eventsBefore(t);
   const act = actAt(t);
-  const { beat, next } = beatAt(playTime);
+  const { beat, next, prev } = beatAt(playTime);
 
   const homePlayers = basePlayers(t, "home");
   const awayPlayers = basePlayers(t, "away");
 
   /* Set-piece staging, before the ball is derived — the ball sits on the taker,
      and the taker is standing over the spot. */
+  /* Run-up. A shooter reaches his strike point by running to it, and a carrier
+     about to be fouled runs to the foul spot — so the stated distance is the
+     distance actually shot from, and the free kick is taken from exactly where
+     the challenge happened. Nothing teleports. */
+  applyApproach(homePlayers, awayPlayers, beat, next, playTime, prev);
+
   const setPiece = setPieceAt(t);
   if (setPiece && beat.shot?.target) {
     applySetPiece(
@@ -876,7 +1032,7 @@ export function matchStateAt(rawT: number): MatchState {
       const collector = (next.team === "home" ? homePlayers : awayPlayers)[next.idx];
       const end = shotEndPoint(beat, collector);
       const keepers = beat.team === "home" ? awayPlayers : homePlayers;
-      const line = beat.team === "home" ? GOAL.lineRight - 1.5 : GOAL.lineLeft + 1.5;
+      const line = beat.team === "home" ? GOAL.lineRight - 2 : GOAL.lineLeft + 2;
       const towards = beat.shot.keeperWrongWay ? 100 - end.y : end.y;
       const p = clamp(lead / (SHOT_MS + 250), 0, 1);
       keepers[0] = lerp(
@@ -893,13 +1049,13 @@ export function matchStateAt(rawT: number): MatchState {
     ball = { ...CENTRE, inFlight: false };
   } else if (phase === "slowmo") {
     const g = GOAL_BEATS[ACTS.indexOf(act)];
-    ball = { ...(g?.shot?.target ?? { x: 98.5, y: 50 }), inFlight: false };
+    ball = { ...(g?.shot?.target ?? inNet(50)), inFlight: false };
   } else if (phase === "walkback") {
     const g = GOAL_BEATS[ACTS.indexOf(act)];
     const from = act.goalAt + act.slowmoMs;
     const p = clamp((t - from) / (act.walkbackEnd - from), 0, 1);
     ball = {
-      ...lerp(g?.shot?.target ?? { x: 98.5, y: 50 }, CENTRE, p * p * (3 - 2 * p)),
+      ...lerp(g?.shot?.target ?? inNet(50), CENTRE, p * p * (3 - 2 * p)),
       inFlight: false,
     };
   } else {
@@ -1029,7 +1185,7 @@ function matchBallOnly(rawT: number): BallState {
   const act = actAt(t);
   if (phase === "kickoff" || phase === "set") return { ...CENTRE, inFlight: false };
   const g = GOAL_BEATS[ACTS.indexOf(act)];
-  const target = g?.shot?.target ?? { x: 98.5, y: 50 };
+  const target = g?.shot?.target ?? inNet(50);
   if (phase === "slowmo") return { ...target, inFlight: false };
   if (phase === "walkback") {
     const from = act.goalAt + act.slowmoMs;

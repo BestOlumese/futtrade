@@ -4,7 +4,8 @@ import { Panel } from "@/components/ui/panel";
 import { LiveBadge } from "@/components/ui/live-badge";
 import { SectionHeading } from "./section-heading";
 import { useDemoClock } from "@/lib/demo/clock";
-import { matchStateAt, HOME, AWAY, GOAL } from "@/lib/demo/timeline";
+import { matchStateAt, HOME, AWAY } from "@/lib/demo/timeline";
+import { PitchMarkings, GoalNet, NET_MARGIN_PCT, VIEWER_ASPECT } from "./pitch";
 
 /**
  * Section 2 — the strongest proof the product is real.
@@ -28,56 +29,6 @@ const SHOT_COLOUR: Record<string, string> = {
   blocked: "var(--color-steel)",
   off: "var(--color-steel)",
 };
-
-/**
- * A goal, seen from above: a shallow box behind the goal line with the two
- * posts marked and the net hatched. Geometry comes from GOAL in the timeline,
- * which is also what shots are aimed at.
- */
-function GoalFrame({ end, flash }: { end: "left" | "right"; flash: boolean }) {
-  const right = end === "right";
-  const lineX = right ? GOAL.lineRight : GOAL.lineLeft;
-  const backX = right ? GOAL.backRight : GOAL.backLeft;
-  const left = Math.min(lineX, backX);
-  const width = Math.abs(backX - lineX);
-
-  return (
-    <div
-      aria-hidden="true"
-      className="absolute"
-      style={{
-        left: `${left}%`,
-        width: `${width}%`,
-        top: `${GOAL.yTop}%`,
-        height: `${GOAL.yBottom - GOAL.yTop}%`,
-      }}
-    >
-      {/* Net */}
-      <div
-        className="absolute inset-0 transition-opacity duration-300"
-        style={{
-          opacity: flash ? 0.55 : 0.16,
-          backgroundImage:
-            "repeating-linear-gradient(45deg, var(--color-floodlight) 0 1px, transparent 1px 5px)",
-        }}
-      />
-      {/* Back of the net */}
-      <div
-        className="absolute inset-y-0 w-px bg-floodlight/45"
-        style={right ? { right: 0 } : { left: 0 }}
-      />
-      {/* The two posts, on the goal line */}
-      <div
-        className={`absolute h-0.75 w-full ${flash ? "bg-lime" : "bg-floodlight/80"} transition-colors duration-300`}
-        style={{ top: 0 }}
-      />
-      <div
-        className={`absolute h-0.75 w-full ${flash ? "bg-lime" : "bg-floodlight/80"} transition-colors duration-300`}
-        style={{ bottom: 0 }}
-      />
-    </div>
-  );
-}
 
 export function MatchCenter() {
   const { t, ref } = useDemoClock<HTMLElement>();
@@ -125,183 +76,191 @@ export function MatchCenter() {
               </div>
             </div>
 
-            {/* 2D viewer */}
+            {/* 2D viewer. The outer box is the playing area PLUS a net's
+                depth at each end; the inner box is the playing area itself, and
+                is the coordinate space (0-100) for every player and the ball.
+                That's what lets the nets sit outside the goal lines, as on a
+                real diagram. */}
             <div
-              className="relative aspect-16/10 w-full overflow-hidden border border-steel/30 bg-midnight"
+              className="relative w-full overflow-hidden border border-steel/30 bg-midnight"
+              style={{ aspectRatio: VIEWER_ASPECT }}
               role="img"
               aria-label={`Two-dimensional match viewer. ${state.clock}, ${HOME.name} ${state.homeScore}, ${AWAY.name} ${state.awayScore}.`}
             >
-              {/* Markings */}
-              <div className="absolute inset-0" aria-hidden="true">
-                <div className="absolute inset-y-0 left-1/2 w-px bg-steel/25" />
-                <div className="absolute top-1/2 left-1/2 h-[22%] w-[14%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-steel/25" />
-                <div className="absolute top-1/2 left-0 h-[42%] w-[14%] -translate-y-1/2 border-y border-r border-steel/25" />
-                <div className="absolute top-1/2 right-0 h-[42%] w-[14%] -translate-y-1/2 border-y border-l border-steel/25" />
-              </div>
-
-              {/* Attacking direction, so the pitch orients a first-time viewer */}
               <div
-                className="absolute inset-x-2 top-1.5 flex justify-between"
-                aria-hidden="true"
+                className="absolute inset-y-0"
+                style={{
+                  left: `${NET_MARGIN_PCT}%`,
+                  right: `${NET_MARGIN_PCT}%`,
+                }}
               >
-                <span className="label text-lime/45">{HOME.short} →</span>
-                <span className="label text-floodlight/30">
-                  ← {AWAY.short}
-                </span>
-              </div>
+                <PitchMarkings />
 
-              {/* Goal frames. Drawn from the same GOAL constants the shots are
-                  aimed at, so a finish can never land beside a post that's
-                  drawn somewhere else. Seen from above, so a goal is a shallow
-                  box behind the line rather than posts and a crossbar. */}
-              <GoalFrame end="right" flash={state.netFlash} />
-              <GoalFrame end="left" flash={false} />
-
-              {/* Shot line, with its xG. Drawn in SVG so it can be a real line. */}
-              {state.shotLine && (
-                <svg
-                  viewBox="0 0 100 100"
-                  preserveAspectRatio="none"
-                  className="absolute inset-0 h-full w-full"
+                {/* Attacking direction, to orient a first-time viewer */}
+                <div
+                  className="absolute inset-x-1 top-1 flex justify-between"
                   aria-hidden="true"
-                  style={{ opacity: Math.max(0, state.shotLine.strength) }}
                 >
-                  {/* Quadratic, so a curled or dinked finish is drawn as the
-                      curve the ball actually travels. */}
-                  <path
-                    d={`M ${state.shotLine.x1} ${state.shotLine.y1} Q ${state.shotLine.cx} ${state.shotLine.cy} ${state.shotLine.x2} ${state.shotLine.y2}`}
-                    fill="none"
-                    stroke={SHOT_COLOUR[state.shotLine.outcome]}
-                    strokeWidth="1.5"
-                    strokeDasharray={
-                      state.shotLine.outcome === "goal" ? undefined : "3 2"
-                    }
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </svg>
-              )}
-              {state.shotLine && (
-                <span
-                  aria-hidden="true"
-                  className="numeric absolute -translate-x-1/2 -translate-y-1/2 bg-midnight/80 px-1 text-[9px]"
-                  style={{
-                    left: `${(state.shotLine.x1 + state.shotLine.x2) / 2}%`,
-                    top: `${(state.shotLine.y1 + state.shotLine.y2) / 2 - 5}%`,
-                    color: SHOT_COLOUR[state.shotLine.outcome],
-                    opacity: Math.max(0, state.shotLine.strength),
-                  }}
-                >
-                  xG {state.shotLine.xg.toFixed(2)}
-                </span>
-              )}
-
-              {/* Ball trail — direction and speed, not just position */}
-              {state.ballTrail.map((point, i) => (
-                <span
-                  key={`trail${i}`}
-                  aria-hidden="true"
-                  className="absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-live"
-                  style={{
-                    left: `${point.x}%`,
-                    top: `${point.y}%`,
-                    opacity: 0.32 - i * 0.09,
-                  }}
-                />
-              ))}
-
-              {/* Players — circles, larger than the ball */}
-              {state.homePlayers.map((player, i) => {
-                const onBall =
-                  state.holder?.team === "home" && state.holder.idx === i;
-                // Flashes at the exact moment possession flips through a
-                // challenge, at the spot it happened.
-                const tackling =
-                  state.tackle?.team === "home" && state.tackle.idx === i;
-                return (
-                  <span
-                    key={`h${i}`}
-                    aria-hidden="true"
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-lime transition-all duration-150 ease-linear ${
-                      tackling
-                        ? "h-5 w-5 ring-4 ring-lime/35"
-                        : `h-3 w-3 ${onBall ? "ring-2 ring-lime/45" : ""}`
-                    }`}
-                    style={{ left: `${player.x}%`, top: `${player.y}%` }}
-                  />
-                );
-              })}
-              {state.awayPlayers.map((player, i) => {
-                const onBall =
-                  state.holder?.team === "away" && state.holder.idx === i;
-                const tackling =
-                  state.tackle?.team === "away" && state.tackle.idx === i;
-                return (
-                  <span
-                    key={`a${i}`}
-                    aria-hidden="true"
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-floodlight/75 bg-midnight transition-all duration-150 ease-linear ${
-                      tackling
-                        ? "h-5 w-5 ring-4 ring-floodlight/25"
-                        : `h-3 w-3 ${onBall ? "ring-2 ring-floodlight/35" : ""}`
-                    }`}
-                    style={{ left: `${player.x}%`, top: `${player.y}%` }}
-                  />
-                );
-              })}
-
-              {/* Card on the offender */}
-              {state.card && (
-                <span
-                  aria-hidden="true"
-                  className={`absolute h-3.5 w-2.5 translate-x-1.5 -translate-y-1/2 border border-midnight ${
-                    state.card.colour === "yellow" ? "bg-card-yellow" : "bg-live"
-                  }`}
-                  style={{ left: `${state.card.x}%`, top: `${state.card.y}%` }}
-                />
-              )}
-
-              {/* Ball */}
-              <span
-                aria-hidden="true"
-                className={`absolute z-10 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-live shadow-[0_0_9px_2px_var(--color-live)] transition-all ease-linear ${
-                  state.ball.inFlight ? "duration-75" : "duration-150"
-                }`}
-                style={{ left: `${state.ball.x}%`, top: `${state.ball.y}%` }}
-              />
-
-              {/* Goal badge — a compact broadcast bug, so the dots stay visible */}
-              {state.goalBadge && (
-                <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] items-center gap-2 border border-lime/50 bg-midnight/85 px-2.5 py-1.5 backdrop-blur-sm">
-                  <span className="label shrink-0 text-lime">Goal</span>
-                  <span className="shrink-0 font-sans text-[11px] text-floodlight">
-                    {state.goalBadge.scorer}
-                  </span>
-                  <span className="truncate font-sans text-[11px] text-floodlight/50">
-                    {state.goalBadge.note}
-                    {state.goalBadge.placement
-                      ? ` · ${state.goalBadge.placement}`
-                      : ""}
-                  </span>
-                  <span className="numeric shrink-0 text-[11px] text-floodlight/60">
-                    {state.goalBadge.minute} · {state.goalBadge.score}
+                  <span className="label text-lime/45">{HOME.short} →</span>
+                  <span className="label text-floodlight/30">
+                    ← {AWAY.short}
                   </span>
                 </div>
-              )}
 
-              {/* Set-piece tag beside the spot, so the pause explains itself */}
-              {state.setPiece && (
+                <GoalNet end="right" flash={state.netFlash} />
+                <GoalNet end="left" flash={false} />
+
+                {/* Shot line, with its xG. Drawn in SVG so it can be a real line. */}
+                {state.shotLine && (
+                  <svg
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                    className="absolute inset-0 h-full w-full"
+                    aria-hidden="true"
+                    style={{ opacity: Math.max(0, state.shotLine.strength) }}
+                  >
+                    {/* Quadratic, so a curled or dinked finish is drawn as the
+                      curve the ball actually travels. */}
+                    <path
+                      d={`M ${state.shotLine.x1} ${state.shotLine.y1} Q ${state.shotLine.cx} ${state.shotLine.cy} ${state.shotLine.x2} ${state.shotLine.y2}`}
+                      fill="none"
+                      stroke={SHOT_COLOUR[state.shotLine.outcome]}
+                      strokeWidth="1.5"
+                      strokeDasharray={
+                        state.shotLine.outcome === "goal" ? undefined : "3 2"
+                      }
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </svg>
+                )}
+                {state.shotLine && (
+                  <span
+                    aria-hidden="true"
+                    className="numeric absolute -translate-x-1/2 -translate-y-1/2 bg-midnight/80 px-1 text-[9px]"
+                    style={{
+                      left: `${(state.shotLine.x1 + state.shotLine.x2) / 2}%`,
+                      top: `${(state.shotLine.y1 + state.shotLine.y2) / 2 - 5}%`,
+                      color: SHOT_COLOUR[state.shotLine.outcome],
+                      opacity: Math.max(0, state.shotLine.strength),
+                    }}
+                  >
+                    xG {state.shotLine.xg.toFixed(2)}
+                  </span>
+                )}
+
+                {/* Ball trail — direction and speed, not just position */}
+                {state.ballTrail.map((point, i) => (
+                  <span
+                    key={`trail${i}`}
+                    aria-hidden="true"
+                    className="absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-live"
+                    style={{
+                      left: `${point.x}%`,
+                      top: `${point.y}%`,
+                      opacity: 0.32 - i * 0.09,
+                    }}
+                  />
+                ))}
+
+                {/* Players — circles, larger than the ball */}
+                {state.homePlayers.map((player, i) => {
+                  const onBall =
+                    state.holder?.team === "home" && state.holder.idx === i;
+                  // Flashes at the exact moment possession flips through a
+                  // challenge, at the spot it happened.
+                  const tackling =
+                    state.tackle?.team === "home" && state.tackle.idx === i;
+                  return (
+                    <span
+                      key={`h${i}`}
+                      aria-hidden="true"
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-lime transition-all duration-150 ease-linear ${
+                        tackling
+                          ? "h-5 w-5 ring-4 ring-lime/35"
+                          : `h-3 w-3 ${onBall ? "ring-2 ring-lime/45" : ""}`
+                      }`}
+                      style={{ left: `${player.x}%`, top: `${player.y}%` }}
+                    />
+                  );
+                })}
+                {state.awayPlayers.map((player, i) => {
+                  const onBall =
+                    state.holder?.team === "away" && state.holder.idx === i;
+                  const tackling =
+                    state.tackle?.team === "away" && state.tackle.idx === i;
+                  return (
+                    <span
+                      key={`a${i}`}
+                      aria-hidden="true"
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-floodlight/75 bg-midnight transition-all duration-150 ease-linear ${
+                        tackling
+                          ? "h-5 w-5 ring-4 ring-floodlight/25"
+                          : `h-3 w-3 ${onBall ? "ring-2 ring-floodlight/35" : ""}`
+                      }`}
+                      style={{ left: `${player.x}%`, top: `${player.y}%` }}
+                    />
+                  );
+                })}
+
+                {/* Card on the offender */}
+                {state.card && (
+                  <span
+                    aria-hidden="true"
+                    className={`absolute h-3.5 w-2.5 translate-x-1.5 -translate-y-1/2 border border-midnight ${
+                      state.card.colour === "yellow"
+                        ? "bg-card-yellow"
+                        : "bg-live"
+                    }`}
+                    style={{
+                      left: `${state.card.x}%`,
+                      top: `${state.card.y}%`,
+                    }}
+                  />
+                )}
+
+                {/* Ball */}
                 <span
                   aria-hidden="true"
-                  className="label absolute -translate-x-1/2 -translate-y-1/2 border border-lime/50 bg-midnight/85 px-1.5 py-1 text-lime backdrop-blur-sm"
-                  style={{
-                    left: `${state.setPiece.spot.x}%`,
-                    top: `${state.setPiece.spot.y - 9}%`,
-                    opacity: state.setPiece.staged,
-                  }}
-                >
-                  {state.setPiece.label}
-                </span>
-              )}
+                  className={`absolute z-10 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-live shadow-[0_0_9px_2px_var(--color-live)] transition-all ease-linear ${
+                    state.ball.inFlight ? "duration-75" : "duration-150"
+                  }`}
+                  style={{ left: `${state.ball.x}%`, top: `${state.ball.y}%` }}
+                />
+
+                {/* Goal badge — a compact broadcast bug, so the dots stay visible */}
+                {state.goalBadge && (
+                  <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] items-center gap-2 border border-lime/50 bg-midnight/85 px-2.5 py-1.5 backdrop-blur-sm">
+                    <span className="label shrink-0 text-lime">Goal</span>
+                    <span className="shrink-0 font-sans text-[11px] text-floodlight">
+                      {state.goalBadge.scorer}
+                    </span>
+                    <span className="truncate font-sans text-[11px] text-floodlight/50">
+                      {state.goalBadge.note}
+                      {state.goalBadge.placement
+                        ? ` · ${state.goalBadge.placement}`
+                        : ""}
+                    </span>
+                    <span className="numeric shrink-0 text-[11px] text-floodlight/60">
+                      {state.goalBadge.minute} · {state.goalBadge.score}
+                    </span>
+                  </div>
+                )}
+
+                {/* Set-piece tag beside the spot, so the pause explains itself */}
+                {state.setPiece && (
+                  <span
+                    aria-hidden="true"
+                    className="label absolute -translate-x-1/2 -translate-y-1/2 border border-lime/50 bg-midnight/85 px-1.5 py-1 text-lime backdrop-blur-sm"
+                    style={{
+                      left: `${state.setPiece.spot.x}%`,
+                      top: `${state.setPiece.spot.y - 9}%`,
+                      opacity: state.setPiece.staged,
+                    }}
+                  >
+                    {state.setPiece.label}
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Momentum — a TIMELINE across the passage, not a scrolling window */}
@@ -400,7 +359,9 @@ export function MatchCenter() {
                   className="flex flex-col gap-1 bg-surface px-3 py-2.5"
                 >
                   <dt className="label text-mute">{stat.k}</dt>
-                  <dd className="numeric text-base text-floodlight">{stat.v}</dd>
+                  <dd className="numeric text-base text-floodlight">
+                    {stat.v}
+                  </dd>
                 </div>
               ))}
             </dl>
