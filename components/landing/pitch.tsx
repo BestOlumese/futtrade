@@ -43,6 +43,10 @@ export function PitchMarkings() {
       strokeOpacity="0.4"
       strokeWidth="1"
       vectorEffect="non-scaling-stroke"
+      // The boundary stroke is centred on the viewBox edge, so half of it falls
+      // outside. With the default `overflow: hidden` that half is clipped and
+      // the touchlines and goal lines all but disappear.
+      style={{ overflow: "visible" }}
     >
       <defs>
         {/* The penalty D is the part of the 9.15m circle outside the area. */}
@@ -57,8 +61,16 @@ export function PitchMarkings() {
         </clipPath>
       </defs>
 
-      {/* Touchlines and goal lines */}
+      {/* Touchlines */}
       <rect x="0" y="0" width="100" height="100" vectorEffect="non-scaling-stroke" />
+
+      {/* Goal lines, drawn stronger — they're the reference every shot,
+          penalty spot and box depth is measured from. */}
+      <path
+        d="M0,0 L0,100 M100,0 L100,100"
+        strokeOpacity="0.75"
+        vectorEffect="non-scaling-stroke"
+      />
 
       {/* Halfway line and centre circle */}
       <path d="M50,0 L50,100" vectorEffect="non-scaling-stroke" />

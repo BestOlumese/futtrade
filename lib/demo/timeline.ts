@@ -381,7 +381,10 @@ const BEATS: Beat[] = [
   },
   {
     at: 39_500, team: "home", idx: 8, via: "pass", action: "foul",
-    foulBy: { team: "away", idx: 5, reason: "dissent", card: "yellow" },
+    foulBy: {
+      team: "away", idx: 5, reason: "dissent", card: "yellow",
+      spot: { x: 58, y: 30 },
+    },
   },
   { at: CARD_FOUL, team: "home", idx: 8, via: "freekick", action: "pass" },
   { at: 43_500, team: "home", idx: 6, via: "pass", action: "pass" },
@@ -748,11 +751,19 @@ function applyApproach(
      ball appeared nowhere near the foul. `applySetPiece` then walks him on from
      here — a no-op for the free kick, since it's taken from that same spot, and
      a walk to the penalty spot for a penalty. */
+  /* Whoever committed the foul stands over it. Without this the card and the
+     "foul" appeared on a player who was nowhere near the challenge. */
+  const placeOffender = (spot: Point, f: { team: Team; idx: number }, p: number) => {
+    const theirs = f.team === "home" ? home : away;
+    theirs[f.idx] = lerp(theirs[f.idx], { x: spot.x - 2.6, y: spot.y + 3.4 }, p);
+  };
+
   if (
     (beat.via === "freekick" || beat.via === "penalty") &&
     prev?.foulBy?.spot
   ) {
     mine[beat.idx] = { ...prev.foulBy.spot };
+    placeOffender(prev.foulBy.spot, prev.foulBy, 1);
     return;
   }
 
@@ -764,7 +775,11 @@ function applyApproach(
 
   if (beat.action === "foul" && beat.foulBy?.spot) {
     const p = clamp((playTime - (next.at - APPROACH_MS)) / APPROACH_MS, 0, 1);
-    if (p > 0) mine[beat.idx] = lerp(mine[beat.idx], beat.foulBy.spot, ease(p));
+    if (p > 0) {
+      mine[beat.idx] = lerp(mine[beat.idx], beat.foulBy.spot, ease(p));
+      // The offender closes in as the challenge comes.
+      placeOffender(beat.foulBy.spot, beat.foulBy, ease(p));
+    }
   }
 }
 
@@ -1062,13 +1077,22 @@ export function matchStateAt(rawT: number): MatchState {
     ball = ballDuringPlay(playTime, homePlayers, awayPlayers);
   }
 
+  /* Trail only while the ball is genuinely travelling in open play.
+     Sampling it during a celebration looked back across the goal into the
+     previous phase, leaving stray red dots out on the pitch while the ball sat
+     in the net. */
   const ballTrail =
-    phase === "kickoff" || phase === "set"
-      ? []
-      : [90, 190, 300].map((back) => {
-          const prev = matchBallOnly(Math.max(0, t - back));
-          return { x: prev.x, y: prev.y };
-        });
+    phase === "play" && ball.inFlight
+      ? [90, 190, 300]
+          .map((back) => ({ back, at: (((t - back) % LOOP_MS) + LOOP_MS) % LOOP_MS }))
+          // Each sample is kept only if the ball was also in open play then, so
+          // a trail can never straddle a goal or a stoppage.
+          .filter(({ at }) => phaseAt(at) === "play")
+          .map(({ at }) => {
+            const p = matchBallOnly(at);
+            return { x: p.x, y: p.y };
+          })
+      : [];
 
   const inPlay = phase === "play" || phase === "stoppage";
   const holder = inPlay ? { team: beat.team, idx: beat.idx } : null;
@@ -1097,7 +1121,13 @@ export function matchStateAt(rawT: number): MatchState {
 
   const goalBeat = GOAL_BEATS[ACTS.indexOf(act)];
   if (phase === "slowmo" && goalBeat?.shot?.target) {
-    const origin = basePlayers(realTimeOf(goalBeat.at), goalBeat.team)[goalBeat.idx];
+    /* The replay must retrace the shot that was actually taken. Recomputing the
+       origin from `basePlayers` ignored the run-up and the set-piece staging,
+       so the replay drew a second line from a different dot — most obviously on
+       the free kick and penalty, where the taker had been placed on the spot. */
+    const origin =
+      goalBeat.shot.from ??
+      basePlayers(realTimeOf(goalBeat.at), goalBeat.team)[goalBeat.idx];
     const end = goalBeat.shot.target;
     const c = controlPoint(origin, end, goalBeat.shot.bend ?? 0);
     shotLine = {
