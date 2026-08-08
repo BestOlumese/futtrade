@@ -4,7 +4,7 @@ import { Panel } from "@/components/ui/panel";
 import { LiveBadge } from "@/components/ui/live-badge";
 import { SectionHeading } from "./section-heading";
 import { useDemoClock } from "@/lib/demo/clock";
-import { matchStateAt, MOMENTUM_BARS, HOME, AWAY } from "@/lib/demo/timeline";
+import { matchStateAt } from "@/lib/demo/timeline";
 
 /**
  * Section 2 — the strongest proof the product is real.
@@ -26,8 +26,6 @@ export function MatchCenter() {
     { k: "xG", v: state.xg.toFixed(2) },
     { k: "Passes", v: String(state.passes) },
   ];
-
-  const onTop = state.momentum[MOMENTUM_BARS - 1] >= 0 ? HOME.name : AWAY.name;
 
   return (
     <section
@@ -53,7 +51,7 @@ export function MatchCenter() {
 
             {/* 2D viewer */}
             <div
-              className="relative aspect-[16/10] w-full border border-steel/30 bg-midnight"
+              className="relative aspect-16/10 w-full border border-steel/30 bg-midnight"
               role="img"
               aria-label={`Two-dimensional match viewer. ${state.clock}, score ${state.homeScore} to ${state.awayScore}.`}
             >
@@ -64,11 +62,13 @@ export function MatchCenter() {
                 <div className="absolute top-1/2 right-0 h-[42%] w-[14%] -translate-y-1/2 border-y border-l border-steel/25" />
               </div>
 
+              {/* Players are circles and a little larger than the ball, so the
+                  ball reads as the ball and not as another player. */}
               {state.homePlayers.map((player, i) => (
                 <span
                   key={`h${i}`}
                   aria-hidden="true"
-                  className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 bg-lime transition-all duration-150 ease-linear"
+                  className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-lime transition-all duration-150 ease-linear"
                   style={{ left: `${player.x}%`, top: `${player.y}%` }}
                 />
               ))}
@@ -76,44 +76,66 @@ export function MatchCenter() {
                 <span
                   key={`a${i}`}
                   aria-hidden="true"
-                  className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 border border-floodlight/70 transition-all duration-150 ease-linear"
+                  className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-floodlight/75 bg-midnight transition-all duration-150 ease-linear"
                   style={{ left: `${player.x}%`, top: `${player.y}%` }}
                 />
               ))}
 
-              {/* Ball */}
+              {/* Ball. Sits on whoever holds it, then flies to the receiver —
+                  so it always leaves a player and always arrives at one. The
+                  flight is faster than the dwell, hence the shorter duration. */}
               <span
                 aria-hidden="true"
-                className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-live shadow-[0_0_10px_2px_var(--color-live)] transition-all duration-150 ease-linear"
+                className={`absolute z-10 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-live shadow-[0_0_9px_2px_var(--color-live)] ease-linear ${
+                  state.ball.inFlight ? "duration-75" : "duration-150"
+                } transition-all`}
                 style={{ left: `${state.ball.x}%`, top: `${state.ball.y}%` }}
               />
             </div>
 
-            {/* Momentum — a bar per slice, newest entering from the right */}
+            {/* Momentum — a TIMELINE across the passage, not a scrolling
+                window. Bars fill in as their slice is played; the rest of the
+                passage stays empty rather than showing invented history. */}
             <div className="flex flex-col gap-2">
               <div className="flex items-baseline justify-between">
                 <span className="label text-mute">Momentum</span>
-                <span className="label text-mute">{onTop}</span>
+                <span className="label text-mute">{state.momentumLeader}</span>
               </div>
+
               <div
-                className="relative flex h-14 items-center gap-[3px]"
+                className="relative flex h-14 items-center gap-0.75"
                 aria-hidden="true"
               >
                 <span className="absolute inset-x-0 top-1/2 h-px bg-steel/30" />
-                {state.momentum.map((value, i) => (
-                  <div key={i} className="relative h-full flex-1">
-                    <span
-                      className={`absolute left-0 w-full transition-all duration-200 ease-out ${
-                        value >= 0 ? "bg-lime/85" : "bg-floodlight/30"
-                      }`}
-                      style={
-                        value >= 0
-                          ? { bottom: "50%", height: `${Math.abs(value) / 2}%` }
-                          : { top: "50%", height: `${Math.abs(value) / 2}%` }
-                      }
-                    />
-                  </div>
-                ))}
+                {state.momentum.map((bar, i) => {
+                  const up = bar.value >= 0;
+                  const height = Math.abs(bar.value) / 2;
+                  return (
+                    <div key={i} className="relative h-full flex-1">
+                      {/* Unplayed slices read as an empty track. */}
+                      {!bar.revealed && (
+                        <span className="absolute top-1/2 left-0 h-px w-full -translate-y-1/2 bg-steel/25" />
+                      )}
+                      {bar.revealed && (
+                        <span
+                          className={`absolute left-0 w-full transition-all duration-300 ease-out ${
+                            up ? "bg-lime" : "bg-floodlight/35"
+                          } ${bar.current ? "" : up ? "opacity-70" : "opacity-90"}`}
+                          style={
+                            up
+                              ? { bottom: "50%", height: `${height}%` }
+                              : { top: "50%", height: `${height}%` }
+                          }
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-between">
+                <span className="numeric text-[10px] text-mute">64&apos;</span>
+                <span className="numeric text-[10px] text-mute">78&apos;</span>
               </div>
             </div>
           </div>
