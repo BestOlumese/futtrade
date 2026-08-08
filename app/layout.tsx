@@ -4,10 +4,22 @@ import "./globals.css";
 
 // docs/04-design-system.md § Typography.
 // Display is condensed and heavy — it should feel like a scoreboard, not decoration.
+//
+// `opsz` is requested explicitly. Big Shoulders is an optical-size variable
+// font whose axis defaults to 14, so without this every headline renders with
+// letterforms drawn for body copy — wide and loose at 80px, which is exactly
+// the opposite of the condensed, structural feel the design system asks for.
+// The .display-* utilities in globals.css set the axis to match their size.
+//
+// `fallback` is set because Google publishes no metric overrides for this
+// family; without it the fallback is a non-condensed system font and the page
+// visibly reflows when the webfont lands.
 const bigShoulders = Big_Shoulders({
   subsets: ["latin"],
+  axes: ["opsz"],
   variable: "--font-big-shoulders",
   display: "swap",
+  fallback: ["Arial Narrow", "Helvetica Neue Condensed", "sans-serif"],
 });
 
 const plexSans = IBM_Plex_Sans({

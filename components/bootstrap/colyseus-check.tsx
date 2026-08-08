@@ -63,10 +63,10 @@ export function ColyseusCheck({ endpoint }: { endpoint: string }) {
     <Panel>
       <div className="flex flex-col gap-4 p-6">
         <div className="flex flex-col gap-1">
-          <h2 className="font-display text-xl font-extrabold tracking-tight text-floodlight uppercase">
+          <h2 className="display-sm text-floodlight">
             Colyseus
           </h2>
-          <p className="font-mono text-xs break-all text-floodlight/45 tabular-nums">
+          <p className="numeric text-xs break-all text-floodlight/45">
             {endpoint}
           </p>
         </div>
@@ -86,7 +86,7 @@ export function ColyseusCheck({ endpoint }: { endpoint: string }) {
         </p>
 
         {status === "ok" && (
-          <dl className="flex flex-col gap-1 font-mono text-sm tabular-nums">
+          <dl className="flex flex-col gap-1 numeric text-sm">
             <div className="flex justify-between">
               <dt className="text-floodlight/45">Round trip</dt>
               <dd className="text-floodlight">{roundTrip} ms</dd>

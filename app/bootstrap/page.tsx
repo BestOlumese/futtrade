@@ -56,10 +56,10 @@ export default async function BootstrapPage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-16">
       <header className="flex flex-col gap-2">
-        <p className="font-display text-sm font-bold tracking-widest text-signal uppercase">
+        <p className="eyebrow text-signal">
           Phase 00
         </p>
-        <h1 className="font-display text-5xl leading-none font-extrabold tracking-tight text-floodlight">
+        <h1 className="display-lg text-floodlight">
           Bootstrap status
         </h1>
         <p className="font-sans text-sm text-floodlight/55">
@@ -71,13 +71,13 @@ export default async function BootstrapPage() {
       <div className="grid gap-5 sm:grid-cols-2">
         <Panel>
           <div className="flex flex-col gap-3 p-6">
-            <h2 className="font-display text-xl font-extrabold tracking-tight text-floodlight uppercase">
+            <h2 className="display-sm text-floodlight">
               Auth
             </h2>
             {session?.user ? (
               <>
                 <p className="font-sans text-sm text-signal">Signed in.</p>
-                <dl className="flex flex-col gap-1 font-mono text-sm">
+                <dl className="flex flex-col gap-1 numeric text-sm">
                   <div className="flex justify-between gap-3">
                     <dt className="text-floodlight/45">Manager</dt>
                     <dd className="truncate text-floodlight">
@@ -110,13 +110,13 @@ export default async function BootstrapPage() {
 
         <Panel>
           <div className="flex flex-col gap-3 p-6">
-            <h2 className="font-display text-xl font-extrabold tracking-tight text-floodlight uppercase">
+            <h2 className="display-sm text-floodlight">
               Neon
             </h2>
             {database.ok ? (
               <>
                 <p className="font-sans text-sm text-signal">Connected.</p>
-                <dl className="flex flex-col gap-1 font-mono text-sm tabular-nums">
+                <dl className="flex flex-col gap-1 numeric text-sm">
                   <div className="flex justify-between">
                     <dt className="text-floodlight/45">Public tables</dt>
                     <dd className="text-floodlight">{database.tables}</dd>
@@ -143,7 +143,7 @@ export default async function BootstrapPage() {
 
         <Panel>
           <div className="flex flex-col gap-3 p-6">
-            <h2 className="font-display text-xl font-extrabold tracking-tight text-floodlight uppercase">
+            <h2 className="display-sm text-floodlight">
               Inngest
             </h2>
             <p className="font-sans text-sm text-floodlight/70">
@@ -151,7 +151,7 @@ export default async function BootstrapPage() {
               runs every 15 minutes (UTC). Confirm it in the Inngest dashboard —
               a scheduler is only proven by a run that actually happened.
             </p>
-            <p className="font-mono text-xs text-floodlight/45">/api/inngest</p>
+            <p className="numeric text-xs text-floodlight/45">/api/inngest</p>
           </div>
         </Panel>
       </div>

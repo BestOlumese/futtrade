@@ -21,6 +21,11 @@
   --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 
+  /* Tracking. The design system specifies -1% to -2% on display type; the
+     Tailwind default `tracking-tight` is -2.5%, which overshoots it. */
+  --tracking-display: -0.015em;
+  --tracking-eyebrow: 0.14em;
+
   /* Layout signature — the chamfer. One diagonal cut, top-left by default. */
   --chamfer: 14px;
   --chamfer-edge: 2px;
@@ -37,6 +42,74 @@
    above — do NOT add new named colors for them. */
 @utility text-muted {
   color: color-mix(in srgb, var(--color-floodlight) 45%, transparent);
+}
+
+/* ─── Display type scale ──────────────────────────────────────────────────────
+   The scale is condensed-display-led: the display face is meant to feel like
+   it's doing real work, so it is deliberately large relative to body copy.
+
+   Each step sets `opsz` to match its own rendered size. That axis is the whole
+   point of this face — at 80px with opsz left at its default of 14, the
+   letterforms are the ones drawn for small text, and the headline reads wide
+   and generic instead of tight and structural.
+
+   Headlines are sentence case. Uppercase is reserved for genuine labels — see
+   .eyebrow below — because condensed caps at headline length reads as shouting.
+   ───────────────────────────────────────────────────────────────────────────*/
+
+@utility display-xl {
+  font-family: var(--font-display);
+  font-size: clamp(3.25rem, 8vw, 5.5rem);
+  font-weight: 800;
+  line-height: 0.9;
+  letter-spacing: var(--tracking-display);
+  font-variation-settings: "opsz" 72;
+}
+
+@utility display-lg {
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 5vw, 3.5rem);
+  font-weight: 800;
+  line-height: 0.94;
+  letter-spacing: var(--tracking-display);
+  font-variation-settings: "opsz" 56;
+}
+
+@utility display-md {
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 3vw, 2.125rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: var(--tracking-display);
+  font-variation-settings: "opsz" 32;
+}
+
+@utility display-sm {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: var(--tracking-display);
+  font-variation-settings: "opsz" 24;
+}
+
+/* The one place uppercase is correct: a genuine label or eyebrow, short enough
+   that condensed caps read as a signpost rather than shouting. */
+@utility eyebrow {
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  font-variation-settings: "opsz" 14;
+}
+
+/* Scores, prices, clocks, tickers. Always tabular so digits never reflow. */
+@utility numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 @layer base {

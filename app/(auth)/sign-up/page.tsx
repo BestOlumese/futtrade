@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signUp } from "@/lib/auth-client";
-import { Panel } from "@/components/ui/panel";
+import { AuthPanel, AuthError } from "@/components/auth/auth-panel";
 import { Field } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 
@@ -14,14 +14,15 @@ import { Button } from "@/components/ui/button";
  */
 function passwordHint(password: string): string {
   if (password.length === 0) return "At least 8 characters.";
-  if (password.length < 8) return `${8 - password.length} more characters needed.`;
+  if (password.length < 8)
+    return `${8 - password.length} more character${8 - password.length === 1 ? "" : "s"} needed.`;
   if (password.length < 12) return "Long enough. Longer is stronger.";
   return "Strong length.";
 }
 
 export default function SignUpPage() {
   const router = useRouter();
-  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +33,11 @@ export default function SignUpPage() {
     setPending(true);
     setError(null);
 
-    const { error: signUpError } = await signUp.email({ name, email, password });
+    const { error: signUpError } = await signUp.email({
+      name: username,
+      email,
+      password,
+    });
 
     if (signUpError) {
       setError(signUpError.message ?? "That account couldn't be created.");
@@ -44,72 +49,65 @@ export default function SignUpPage() {
   }
 
   return (
-    <Panel>
-      <div className="flex flex-col gap-6 px-7 pt-8 pb-7">
-        <p className="font-display text-lg font-extrabold tracking-tight text-floodlight uppercase">
-          Empire Live
-        </p>
-
-        <h1 className="font-display text-3xl leading-none font-extrabold tracking-tight text-floodlight">
-          Create account
-        </h1>
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <Field
-            id="name"
-            label="Manager name"
-            type="text"
-            autoComplete="username"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <Field
-            id="email"
-            label="Email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <Field
-            id="password"
-            label="Password"
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            hint={passwordHint(password)}
-          />
-
-          {error ? (
-            <p
-              role="alert"
-              className="border-l-2 border-tally pl-3 font-sans text-sm text-floodlight"
-            >
-              {error}
-            </p>
-          ) : null}
-
-          <Button type="submit" disabled={pending}>
-            {pending ? "Creating account…" : "Create account"}
-          </Button>
-        </form>
-
-        <p className="font-sans text-xs leading-relaxed text-floodlight/45">
-          Creating an account means you accept the terms of play.
-        </p>
-
+    <AuthPanel
+      title="Create account"
+      footer={
         <Link
           href="/sign-in"
-          className="font-sans text-sm text-floodlight/55 underline-offset-4 hover:text-signal hover:underline"
+          className="text-floodlight/55 underline-offset-4 hover:text-signal hover:underline"
         >
           Already have an account? Sign in
         </Link>
-      </div>
-    </Panel>
+      }
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        <Field
+          id="username"
+          label="Username"
+          type="text"
+          autoComplete="username"
+          required
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+        />
+        <Field
+          id="email"
+          label="Email"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <Field
+          id="password"
+          label="Password"
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={8}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          hint={passwordHint(password)}
+        />
+
+        {error ? <AuthError>{error}</AuthError> : null}
+
+        <Button type="submit" disabled={pending}>
+          {pending ? "Creating account…" : "Create account"}
+        </Button>
+
+        <p className="font-sans text-xs leading-relaxed text-floodlight/45">
+          Creating an account means you accept the{" "}
+          <Link
+            href="/terms"
+            className="text-floodlight/70 underline underline-offset-4 hover:text-signal"
+          >
+            terms of play
+          </Link>
+          .
+        </p>
+      </form>
+    </AuthPanel>
   );
 }

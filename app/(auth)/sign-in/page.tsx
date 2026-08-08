@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "@/lib/auth-client";
-import { Panel } from "@/components/ui/panel";
+import { AuthPanel, AuthError } from "@/components/auth/auth-panel";
 import { Field } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 
@@ -23,10 +23,7 @@ export default function SignInPage() {
     const { error: signInError } = await signIn.email({ email, password });
 
     if (signInError) {
-      // Voice: state what happened, no apology register.
-      setError(
-        signInError.message ?? "That email and password don't match.",
-      );
+      setError(signInError.message ?? "That email and password don't match.");
       setPending(false);
       return;
     }
@@ -35,59 +32,51 @@ export default function SignInPage() {
   }
 
   return (
-    <Panel>
-      <div className="flex flex-col gap-6 px-7 pt-8 pb-7">
-        <p className="font-display text-lg font-extrabold tracking-tight text-floodlight uppercase">
-          Empire Live
-        </p>
-
-        <h1 className="font-display text-3xl leading-none font-extrabold tracking-tight text-floodlight">
-          Sign in
-        </h1>
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <Field
-            id="email"
-            label="Email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <Field
-            id="password"
-            label="Password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-
-          {error ? (
-            <p
-              role="alert"
-              className="border-l-2 border-tally pl-3 font-sans text-sm text-floodlight"
-            >
-              {error}
-            </p>
-          ) : null}
-
-          <Button type="submit" disabled={pending}>
-            {pending ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
-
-        <div className="flex flex-col gap-2 font-sans text-sm">
+    <AuthPanel
+      title="Sign in"
+      footer={
+        <>
+          <Link
+            href="/forgot-password"
+            className="text-floodlight/55 underline-offset-4 hover:text-signal hover:underline"
+          >
+            Forgot password?
+          </Link>
           <Link
             href="/sign-up"
             className="text-floodlight/55 underline-offset-4 hover:text-signal hover:underline"
           >
             Create an account
           </Link>
-        </div>
-      </div>
-    </Panel>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        <Field
+          id="email"
+          label="Email"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <Field
+          id="password"
+          label="Password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+
+        {error ? <AuthError>{error}</AuthError> : null}
+
+        <Button type="submit" disabled={pending}>
+          {pending ? "Signing in…" : "Sign in"}
+        </Button>
+      </form>
+    </AuthPanel>
   );
 }
