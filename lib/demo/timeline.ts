@@ -443,7 +443,8 @@ const BEATS: Beat[] = [
       outcome: "goal", xg: 0.07, note: "struck from distance",
       placement: "inside the post", distanceYards: 25,
       from: { x: yardsFromGoal(25, "right"), y: 50 },
-      target: inNet(45.4), bend: 4, priceStep: 0.19,
+      // Struck straight — it's a drive from distance, not a curled finish.
+      target: inNet(45.4), priceStep: 0.19,
     },
   },
   { at: G3, team: "home", idx: 6, via: "goal", action: "pass" },
@@ -637,6 +638,55 @@ const AWAY_SHAPE: [number, number][] = [
   [45, 24], [45, 50], [45, 76],
 ];
 
+/**
+ * Kickoff formations. Every player is in his OWN half, which the open-play
+ * shapes are not — those push both front lines across the halfway line, so
+ * restarting from them left the teams interleaved around the centre circle.
+ * The player taking the kickoff steps up to the ball; everyone else stays back.
+ */
+const KICKOFF_HOME: [number, number][] = [
+  [3, 50],
+  [16, 18], [13, 40], [13, 60], [16, 82],
+  [30, 30], [34, 50], [30, 70],
+  [43, 22], [39, 48], [43, 78],
+];
+
+const KICKOFF_AWAY: [number, number][] = [
+  [97, 50],
+  [84, 18], [87, 40], [87, 60], [84, 82],
+  [70, 30], [66, 50], [70, 70],
+  [57, 22], [61, 48], [57, 78],
+];
+
+const KICKOFF_BEATS = BEATS.filter((b) => b.via === "kickoff");
+
+/** The kickoff that is coming up, or currently being taken. */
+function kickoffTakerAt(t: number): { team: Team; idx: number } {
+  for (let i = 0; i < ACTS.length; i++) {
+    if (t < ACTS[i].kickoff[1]) return KICKOFF_BEATS[i];
+  }
+  // Past the final act, the loop returns to the opening kickoff.
+  return KICKOFF_BEATS[0];
+}
+
+/** The resting shape for a restart: own half, taker on the ball. */
+function kickoffShapeFor(team: Team, t: number): Point[] {
+  const shape = (team === "home" ? KICKOFF_HOME : KICKOFF_AWAY).map(
+    ([x, y]) => ({ x, y }),
+  );
+  const taker = kickoffTakerAt(t);
+  if (taker.team === team) {
+    shape[taker.idx] = { x: team === "home" ? 48.4 : 51.6, y: 50 };
+    // A second player steps in to receive. Only the side kicking off may be
+    // inside the centre circle, which is why the other team's forward sits
+    // outside it in the shapes above.
+    if (taker.idx !== 9) {
+      shape[9] = { x: team === "home" ? 45 : 55, y: 53.5 };
+    }
+  }
+  return shape;
+}
+
 type Role = "GK" | "CB" | "FB" | "CM" | "WING" | "ST";
 const ROLES: Role[] = [
   "GK", "FB", "CB", "CB", "FB", "CM", "CM", "CM", "WING", "ST", "WING",
@@ -700,7 +750,15 @@ function basePlayers(t: number, team: Team): Point[] {
   const blockX = (focus.x - 50) * (team === "home" ? 0.3 : 0.26) * settle;
   const blockY = (focus.y - 50) * (team === "home" ? 0.2 : 0.17) * settle;
 
-  return shape.map(([bx, by], i) => {
+  // At rest (settle 0) the team stands in its kickoff shape, entirely in its own
+  // half; at full settle it's the open-play formation. The walk-back after a
+  // goal is this blend running in reverse.
+  const kickoff = kickoffShapeFor(team, t);
+
+  return shape.map(([sx, sy], i) => {
+    const bx = kickoff[i].x + (sx - kickoff[i].x) * settle;
+    const by = kickoff[i].y + (sy - kickoff[i].y) * settle;
+
     const motion = ROLE_MOTION[ROLES[i]];
     const c = character(team, i);
     const energy = settle * liveness * c.amp;
@@ -1023,11 +1081,19 @@ export function matchStateAt(rawT: number): MatchState {
 
   /* Set-piece staging, before the ball is derived — the ball sits on the taker,
      and the taker is standing over the spot. */
+  const inPlay = phase === "play" || phase === "stoppage";
+
   /* Run-up. A shooter reaches his strike point by running to it, and a carrier
      about to be fouled runs to the foul spot — so the stated distance is the
      distance actually shot from, and the free kick is taken from exactly where
-     the challenge happened. Nothing teleports. */
-  applyApproach(homePlayers, awayPlayers, beat, next, playTime, prev);
+     the challenge happened. Nothing teleports.
+
+     Only while the ball is live: play time is frozen through a celebration, so
+     leaving this on kept the penalty taker pinned to the foul spot deep in the
+     opposition half while everyone else walked back for the restart. */
+  if (inPlay) {
+    applyApproach(homePlayers, awayPlayers, beat, next, playTime, prev);
+  }
 
   const setPiece = setPieceAt(t);
   if (setPiece && beat.shot?.target) {
@@ -1094,7 +1160,6 @@ export function matchStateAt(rawT: number): MatchState {
           })
       : [];
 
-  const inPlay = phase === "play" || phase === "stoppage";
   const holder = inPlay ? { team: beat.team, idx: beat.idx } : null;
   const tackle =
     inPlay && beat.via === "tackle" && playTime - beat.at < TACKLE_FLASH_MS
