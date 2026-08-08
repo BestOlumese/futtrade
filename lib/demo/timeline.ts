@@ -1,28 +1,34 @@
 /**
- * The landing page's scripted match — a single event stream that drives every
- * animated surface on the page.
+ * The landing page's scripted match — ONE event stream driving every animated
+ * surface on the page.
  *
- * Mirrors the real architecture on purpose. AGENTS.md: "One event stream powers
- * everything downstream: the live 2D viewer, post-match stats, player Form and
- * market price movement."
+ * AGENTS.md: "One event stream powers everything downstream: the live 2D viewer,
+ * post-match stats, player Form and market price movement. Get that schema
+ * right; treat it as the spine of the whole system."
  *
- * Two structural decisions worth knowing before editing:
+ * ── Why this file is shaped the way it is ──────────────────────────────────
  *
- * 1. POSSESSION DRIVES THE BALL, never the reverse. The script names who holds
- *    it and the ball's position is derived from that player's live position, so
- *    a pass always leaves a player and always arrives at one.
+ * An earlier version kept possession and events as TWO independent schedules.
+ * They inevitably drifted: a shot fired in the feed while the ball was across
+ * the pitch with somebody else, so the shot line appeared before the shot. That
+ * is exactly the second data path AGENTS.md warns against.
  *
- * 2. REAL TIME AND PLAY TIME ARE DIFFERENT CLOCKS. The passage contains a card
- *    stoppage, a slow-motion goal replay and a walk-back to kickoff, so play
- *    time freezes or crawls while the loop's real time keeps advancing.
- *    `playClockAt` is the mapping between them. The match clock, possession and
- *    player movement all read play time; phases and event scheduling read real
- *    time.
+ * There is now a single ordered list of BEATS. A beat says who has the ball and
+ * what happens as it leaves — pass, shot, or foul. Everything else is derived
+ * from it: the ball's position, the shot line, the tackle flash, the feed rows,
+ * the stats, the momentum impulses and the share price. The line and the ball
+ * cannot disagree because they are computed from the same record.
+ *
+ * ── Two clocks ────────────────────────────────────────────────────────────
+ *
+ * Real loop time advances continuously. PLAY time freezes during the booking
+ * and crawls during the slow-motion goal. `playClockAt` maps real → play and
+ * `realTimeOf` inverts it. Beats live in play time; phases and the price live
+ * in real time.
  *
  * `matchStateAt` is pure, so server and client render identically, a section
  * scrolled back into view is instantly in sync, and state at LOOP_MS equals
- * state at 0 — the loop closes on the kickoff, which is why the restart reads
- * as intentional rather than as a glitch.
+ * state at 0 — the loop closes on the kickoff.
  *
  * None of this is real data, and it is deliberately not wired to a live match:
  * the landing page has to work when nothing is in progress.
@@ -30,25 +36,40 @@
 
 export const LOOP_MS = 72_000;
 
-/** Match seconds per second of PLAY time (stoppages excluded). */
-const MATCH_SPEED = 12;
+const MATCH_SPEED = 12; // match seconds per second of PLAY time
 const MATCH_START_SECOND = 64 * 60 + 12;
 
 export const HOME = { name: "Kestrel FC", short: "KES" };
 export const AWAY = { name: "Ardor SC", short: "ARD" };
 export const TRACKED_PLAYER = "A. Delane";
 
-/* ── Phase schedule, in real loop ms ─────────────────────────────────────── */
+export type Team = "home" | "away";
 
-const T_KICKOFF_END = 3_000; // ball on the centre spot, teams in shape
-const T_CARD = 40_000; // card shown, play stops
+const HOME_NAMES = [
+  "R. Voss", "J. Kavan", "P. Sarn", "L. Idris", "M. Okon",
+  "T. Marek", "D. Ferran", "N. Renn", "S. Orsi", "A. Delane", "K. Vance",
+];
+
+const AWAY_NAMES = [
+  "E. Rask", "G. Holt", "F. Adair", "C. Nyle", "W. Brann",
+  "B. Corven", "O. Teal", "R. Vasso", "H. Solt", "V. Marn", "D. Keir",
+];
+
+function nameOf(team: Team, idx: number): string {
+  return team === "home" ? HOME_NAMES[idx] : AWAY_NAMES[idx];
+}
+
+/* ── Phase schedule, real loop ms ────────────────────────────────────────── */
+
+const T_KICKOFF_END = 3_000;
+const T_CARD = 40_000;
 const T_CARD_END = 42_000;
-const T_GOAL = 56_000; // the climax
-const T_SLOWMO_END = 59_000; // heavy slow-motion hold
-const T_WALKBACK_END = 66_000; // players return to shape, ball to centre
-// T_WALKBACK_END → LOOP_MS: set for kickoff. Identical to t=0, so the loop closes.
+const T_GOAL = 56_000;
+const T_SLOWMO_END = 59_000;
+const T_WALKBACK_END = 66_000;
 
-export type Phase = "kickoff" | "play" | "stoppage" | "slowmo" | "walkback" | "set";
+export type Phase =
+  | "kickoff" | "play" | "stoppage" | "slowmo" | "walkback" | "set";
 
 export function phaseAt(t: number): Phase {
   if (t < T_KICKOFF_END) return "kickoff";
@@ -60,13 +81,10 @@ export function phaseAt(t: number): Phase {
   return "set";
 }
 
-/** Heavy slow-motion: play crawls to a near-freeze on the goal. */
 const SLOWMO_RATE = 0.1;
+const PLAY_BEFORE_CARD = T_CARD - T_KICKOFF_END; // 37_000
+export const PLAY_TOTAL = PLAY_BEFORE_CARD + (T_GOAL - T_CARD_END); // 51_000
 
-const PLAY_BEFORE_CARD = T_CARD - T_KICKOFF_END;
-const PLAY_TOTAL = PLAY_BEFORE_CARD + (T_GOAL - T_CARD_END);
-
-/** Real loop time → play time. Frozen during stoppage, crawling in slow-mo. */
 export function playClockAt(t: number): number {
   if (t <= T_KICKOFF_END) return 0;
   if (t <= T_CARD) return t - T_KICKOFF_END;
@@ -76,29 +94,30 @@ export function playClockAt(t: number): number {
   return PLAY_TOTAL + (T_SLOWMO_END - T_GOAL) * SLOWMO_RATE;
 }
 
-/**
- * How "in play" the shape is. 0 means settled into base formation for kickoff,
- * 1 means full match movement. Ramps in after kickoff and out during walk-back,
- * which is what stops the reset from snapping.
- */
+/** Inverse of playClockAt. At the stoppage it returns the moment play STOPPED,
+ *  which is when the foul happened — the useful answer for scheduling. */
+export function realTimeOf(playTime: number): number {
+  if (playTime <= 0) return T_KICKOFF_END;
+  if (playTime <= PLAY_BEFORE_CARD) return T_KICKOFF_END + playTime;
+  if (playTime <= PLAY_TOTAL) return T_CARD_END + (playTime - PLAY_BEFORE_CARD);
+  return T_GOAL + (playTime - PLAY_TOTAL) / SLOWMO_RATE;
+}
+
 const SETTLE_RAMP_START = 1_500;
 const SETTLE_RAMP_END = 4_500;
 
 function settleAt(t: number): number {
-  // Ramp in after the kickoff whistle…
   if (t < SETTLE_RAMP_START) return 0;
   if (t < SETTLE_RAMP_END) {
     return (t - SETTLE_RAMP_START) / (SETTLE_RAMP_END - SETTLE_RAMP_START);
   }
   if (t < T_SLOWMO_END) return 1;
-  // …and back out as the players walk into shape for the restart.
   if (t < T_WALKBACK_END) {
     return 1 - (t - T_SLOWMO_END) / (T_WALKBACK_END - T_SLOWMO_END);
   }
   return 0;
 }
 
-/** Movement energy. Play stops for a card and nearly stops in slow-motion. */
 function livenessAt(t: number): number {
   const phase = phaseAt(t);
   if (phase === "stoppage") return 0.12;
@@ -107,13 +126,103 @@ function livenessAt(t: number): number {
   return 1;
 }
 
-/* ── Events ──────────────────────────────────────────────────────────────── */
+/* ── The beat list: the single source of truth ───────────────────────────── */
 
-export type EventType = "Shot" | "Save" | "Goal" | "Card" | "Sub" | "Tackle";
 export type ShotOutcome = "goal" | "saved" | "blocked" | "off";
-export type Team = "home" | "away";
+export type Arrival =
+  | "kickoff" | "pass" | "tackle" | "save" | "block" | "goalkick" | "freekick" | "goal";
 
-export type MatchEvent = {
+type Beat = {
+  /** Play-time ms at which this player GAINS the ball. */
+  at: number;
+  team: Team;
+  idx: number;
+  via: Arrival;
+  /** What they do with it as the beat ends. */
+  action: "pass" | "shot" | "foul";
+  shot?: { outcome: ShotOutcome; xg: number; note: string };
+  /** Foul committed on this carrier, by the named opponent. */
+  foulBy?: { team: Team; idx: number; card: "yellow" | "red"; reason: string };
+  /** A non-possession note emitted when this beat starts. */
+  note?: { type: "Sub"; detail: string };
+};
+
+const SHOT_MS = 450;
+const RECOVER_MS = 750;
+const PASS_FLIGHT_MS = 600;
+
+/**
+ * The passage. The foul must land on PLAY_BEFORE_CARD and the goal on
+ * PLAY_TOTAL, because those are the play-time coordinates of the scripted
+ * stoppage and slow-motion phases.
+ */
+const BEATS: Beat[] = [
+  { at: 0, team: "home", idx: 6, via: "kickoff", action: "pass" },
+  { at: 2_200, team: "home", idx: 2, via: "pass", action: "pass" },
+  { at: 4_200, team: "away", idx: 8, via: "tackle", action: "pass" },
+  { at: 6_000, team: "home", idx: 5, via: "tackle", action: "pass" },
+  { at: 8_200, team: "home", idx: 6, via: "pass", action: "pass" },
+  {
+    at: 10_000, team: "home", idx: 8, via: "pass", action: "shot",
+    shot: { outcome: "blocked", xg: 0.09, note: "blocked" },
+  },
+  { at: 12_500, team: "away", idx: 3, via: "block", action: "pass" },
+  { at: 14_500, team: "away", idx: 6, via: "pass", action: "pass" },
+  {
+    at: 16_500, team: "away", idx: 9, via: "pass", action: "shot",
+    shot: { outcome: "saved", xg: 0.31, note: "low to the right" },
+  },
+  { at: 19_000, team: "home", idx: 0, via: "save", action: "pass" },
+  { at: 21_500, team: "home", idx: 3, via: "pass", action: "pass" },
+  {
+    at: 24_000, team: "home", idx: 7, via: "pass", action: "pass",
+    note: { type: "Sub", detail: "Renn on for Kavan" },
+  },
+  { at: 27_000, team: "home", idx: 5, via: "pass", action: "pass" },
+  { at: 29_500, team: "home", idx: 6, via: "pass", action: "pass" },
+  { at: 32_000, team: "home", idx: 9, via: "pass", action: "pass" },
+  {
+    at: 34_500, team: "home", idx: 7, via: "pass", action: "foul",
+    foulBy: { team: "away", idx: 5, card: "yellow", reason: "dissent" },
+  },
+  // Free kick from the same spot, taken by the player who was fouled — so the
+  // ball never teleports across the stoppage.
+  { at: PLAY_BEFORE_CARD, team: "home", idx: 7, via: "freekick", action: "pass" },
+  { at: 39_500, team: "home", idx: 8, via: "pass", action: "pass" },
+  {
+    at: 41_500, team: "home", idx: 9, via: "pass", action: "shot",
+    shot: { outcome: "off", xg: 0.12, note: "over" },
+  },
+  { at: 44_000, team: "away", idx: 0, via: "goalkick", action: "pass" },
+  { at: 46_500, team: "away", idx: 5, via: "pass", action: "pass" },
+  {
+    at: 48_200, team: "home", idx: 9, via: "tackle", action: "shot",
+    shot: { outcome: "goal", xg: 0.44, note: "left foot" },
+  },
+  { at: PLAY_TOTAL, team: "home", idx: 9, via: "goal", action: "pass" },
+];
+
+function beatAt(playTime: number) {
+  let i = 0;
+  for (let k = 0; k < BEATS.length - 1; k++) {
+    if (BEATS[k].at <= playTime) i = k;
+  }
+  return { beat: BEATS[i], next: BEATS[i + 1] ?? BEATS[0], index: i };
+}
+
+/** When a shot leaves the boot, in play time. */
+function shotFireTime(beat: Beat, next: Beat): number {
+  return beat.shot?.outcome === "goal"
+    ? next.at - SHOT_MS
+    : next.at - RECOVER_MS - SHOT_MS;
+}
+
+/* ── Derived events: feed rows, price steps, momentum impulses ───────────── */
+
+export type EventType =
+  | "Shot" | "Save" | "Goal" | "Card" | "Sub" | "Tackle" | "Foul";
+
+export type DerivedEvent = {
   /** Real loop ms. */
   at: number;
   type: EventType;
@@ -123,38 +232,76 @@ export type MatchEvent = {
   priceStep?: number;
   impulse?: number;
   scores?: boolean;
-  /** Who struck it — drives where the shot line is drawn from. */
-  shooter?: { team: Team; idx: number };
-  outcome?: ShotOutcome;
-  card?: "yellow" | "red";
-  cardOn?: { team: Team; idx: number };
 };
 
-export const EVENTS: MatchEvent[] = [
-  { at: 6_000, type: "Tackle", detail: "Marek wins it back", impulse: 14 },
-  {
-    at: 13_000, type: "Shot", detail: "Orsi · blocked", xg: 0.09, isShot: true,
-    priceStep: 0.02, impulse: 22, shooter: { team: "home", idx: 8 }, outcome: "blocked",
-  },
-  {
-    at: 22_000, type: "Save", detail: "Voss · low to the right", xg: 0.31, isShot: true,
-    priceStep: 0.05, impulse: -18, shooter: { team: "away", idx: 9 }, outcome: "saved",
-  },
-  { at: 31_000, type: "Sub", detail: "Renn on for Kavan", impulse: 6 },
-  {
-    at: T_CARD, type: "Card", detail: "Ardor SC · dissent", impulse: 10,
-    card: "yellow", cardOn: { team: "away", idx: 5 },
-  },
-  {
-    at: 48_000, type: "Shot", detail: `${TRACKED_PLAYER} · over`, xg: 0.12, isShot: true,
-    priceStep: 0.04, impulse: 18, shooter: { team: "home", idx: 9 }, outcome: "off",
-  },
-  {
-    at: T_GOAL, type: "Goal", detail: `${TRACKED_PLAYER} · left foot`, xg: 0.44,
-    isShot: true, priceStep: 0.27, impulse: 48, scores: true,
-    shooter: { team: "home", idx: 9 }, outcome: "goal",
-  },
-];
+/** Built once from BEATS, so a feed row can never describe something the pitch
+ *  isn't doing. */
+export const EVENTS: DerivedEvent[] = (() => {
+  const out: DerivedEvent[] = [];
+
+  BEATS.forEach((beat, i) => {
+    const next = BEATS[i + 1];
+
+    if (beat.note) {
+      out.push({
+        at: realTimeOf(beat.at),
+        type: beat.note.type,
+        detail: beat.note.detail,
+        impulse: 6,
+      });
+    }
+
+    if (beat.via === "tackle") {
+      out.push({
+        at: realTimeOf(beat.at),
+        type: "Tackle",
+        detail: `${nameOf(beat.team, beat.idx)} wins it back`,
+        impulse: beat.team === "home" ? 15 : -15,
+      });
+    }
+
+    if (beat.action === "shot" && beat.shot && next) {
+      const { outcome, xg, note } = beat.shot;
+      const contact = shotFireTime(beat, next) + SHOT_MS;
+      const shooter = nameOf(beat.team, beat.idx);
+      const home = beat.team === "home";
+
+      if (outcome === "goal") {
+        out.push({
+          at: realTimeOf(contact), type: "Goal",
+          detail: `${shooter} · ${note}`, xg, isShot: true,
+          priceStep: 0.27, impulse: 48, scores: true,
+        });
+      } else if (outcome === "saved") {
+        // Credited to the keeper who made it — the next beat's player.
+        out.push({
+          at: realTimeOf(contact), type: "Save",
+          detail: `${nameOf(next.team, next.idx)} · ${note}`, xg, isShot: true,
+          priceStep: home ? 0.05 : 0, impulse: home ? 26 : -20,
+        });
+      } else {
+        out.push({
+          at: realTimeOf(contact), type: "Shot",
+          detail: `${shooter} · ${note}`, xg, isShot: true,
+          priceStep: home ? (outcome === "off" ? 0.04 : 0.02) : 0,
+          impulse: home ? 20 : -16,
+        });
+      }
+    }
+
+    if (beat.action === "foul" && beat.foulBy && next) {
+      out.push({
+        at: realTimeOf(next.at), type: "Card",
+        detail: `${nameOf(beat.foulBy.team, beat.foulBy.idx)} · ${beat.foulBy.reason}`,
+        impulse: beat.foulBy.team === "away" ? 12 : -12,
+      });
+    }
+  });
+
+  return out.sort((a, b) => a.at - b.at);
+})();
+
+const FOUL_BEAT = BEATS.find((b) => b.action === "foul")!;
 
 /* ── Formations and per-player character ─────────────────────────────────── */
 
@@ -173,16 +320,10 @@ const AWAY_SHAPE: [number, number][] = [
 ];
 
 type Role = "GK" | "CB" | "FB" | "CM" | "WING" | "ST";
-
 const ROLES: Role[] = [
   "GK", "FB", "CB", "CB", "FB", "CM", "CM", "CM", "WING", "ST", "WING",
 ];
 
-/**
- * Per-role movement envelope. This is what stops the pitch looking like a wave:
- * a keeper patrols a few percent of his line while a winger covers a quarter of
- * the pitch, and they do it at different speeds.
- */
 const ROLE_MOTION: Record<
   Role,
   { ax: number; ay: number; freq: number; burst: number; shift: number }
@@ -195,13 +336,11 @@ const ROLE_MOTION: Record<
   ST: { ax: 6.2, ay: 6.6, freq: 0.85, burst: 4, shift: 1.1 },
 };
 
-/** Deterministic 0..1 from a player index and a salt — no RNG, no hydration risk. */
 function hash(i: number, salt: number): number {
   const x = Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453;
   return x - Math.floor(x);
 }
 
-/** Each player gets his own speed, amplitude and two unrelated rhythms. */
 function character(team: Team, i: number) {
   const salt = team === "home" ? 0 : 7;
   return {
@@ -222,59 +361,15 @@ function shapeFor(team: Team): [number, number][] {
   return team === "home" ? HOME_SHAPE : AWAY_SHAPE;
 }
 
-/* ── Possession ──────────────────────────────────────────────────────────── */
-
-/** Possession chain over PLAY time (0 … PLAY_TOTAL). */
-const POSSESSION: { at: number; team: Team; idx: number }[] = [
-  { at: 0, team: "home", idx: 6 },
-  { at: 2_000, team: "home", idx: 2 },
-  { at: 4_000, team: "away", idx: 8 },
-  { at: 5_500, team: "home", idx: 6 },
-  { at: 8_000, team: "home", idx: 5 },
-  { at: 9_500, team: "home", idx: 8 },
-  { at: 11_500, team: "away", idx: 2 },
-  { at: 14_000, team: "away", idx: 6 },
-  { at: 17_000, team: "away", idx: 9 },
-  { at: 19_500, team: "home", idx: 0 },
-  { at: 22_000, team: "home", idx: 3 },
-  { at: 25_000, team: "home", idx: 7 },
-  { at: 28_000, team: "home", idx: 5 },
-  { at: 31_000, team: "home", idx: 6 },
-  { at: 34_000, team: "away", idx: 5 },
-  { at: 37_000, team: "home", idx: 7 },
-  { at: 40_000, team: "home", idx: 6 },
-  { at: 43_000, team: "home", idx: 8 },
-  { at: 45_000, team: "home", idx: 9 },
-  { at: 47_500, team: "home", idx: 10 },
-  { at: 49_500, team: "home", idx: 6 },
-  { at: 51_000, team: "home", idx: 9 },
-  { at: PLAY_TOTAL, team: "home", idx: 9 },
-];
-
-const PASS_FLIGHT_MS = 600;
-
-function possessionAt(playTime: number) {
-  let i = 0;
-  for (let k = 0; k < POSSESSION.length - 1; k++) {
-    if (POSSESSION[k].at <= playTime) i = k;
-  }
-  return {
-    from: POSSESSION[i],
-    to: POSSESSION[i + 1] ?? POSSESSION[0],
-    startsAt: POSSESSION[i].at,
-    endsAt: (POSSESSION[i + 1] ?? POSSESSION[0]).at,
-  };
-}
-
-/** Where play is focused, from BASE positions only — the block shift is derived
- *  from this and the ball is derived from the shifted players, so using live
- *  positions here would be circular. */
+/** Where play is focused, from BASE positions only — the block shift derives
+ *  from this and the ball derives from the shifted players, so live positions
+ *  here would be circular. */
 function focusAt(playTime: number): { x: number; y: number } {
-  const { from, to, startsAt, endsAt } = possessionAt(playTime);
-  const a = shapeFor(from.team)[from.idx];
-  const b = shapeFor(to.team)[to.idx];
-  const span = endsAt - startsAt || 1;
-  const p = clamp((playTime - startsAt) / span, 0, 1);
+  const { beat, next } = beatAt(playTime);
+  const a = shapeFor(beat.team)[beat.idx];
+  const b = shapeFor(next.team)[next.idx];
+  const span = next.at - beat.at || 1;
+  const p = clamp((playTime - beat.at) / span, 0, 1);
   const eased = p * p * (3 - 2 * p);
   return { x: a[0] + (b[0] - a[0]) * eased, y: a[1] + (b[1] - a[1]) * eased };
 }
@@ -292,25 +387,20 @@ function playersAt(t: number, team: Team): { x: number; y: number }[] {
   const blockY = (focus.y - 50) * (team === "home" ? 0.2 : 0.17) * settle;
 
   return shape.map(([bx, by], i) => {
-    const role = ROLES[i];
-    const motion = ROLE_MOTION[role];
+    const motion = ROLE_MOTION[ROLES[i]];
     const c = character(team, i);
     const energy = settle * liveness * c.amp;
-
     const w1 = s * motion.freq * c.speed;
     const w2 = s * motion.freq * c.freq2 * c.speed;
 
     const driftX =
       (Math.sin(w1 + c.phase1) * 0.68 + Math.sin(w2 + c.phase2) * 0.34) *
-      motion.ax *
-      energy;
+      motion.ax * energy;
     const driftY =
       (Math.cos(w1 * 0.93 + c.phase2) * 0.68 +
         Math.sin(w2 * 1.08 + c.phase1) * 0.32) *
-      motion.ay *
-      energy;
+      motion.ay * energy;
 
-    // Bursts: attackers surge forward then drop off, rather than gliding.
     const burstWave = Math.sin(s * 0.34 * c.speed + c.burstPhase);
     const burst =
       motion.burst * Math.pow(Math.max(0, burstWave), 3) * attack * energy;
@@ -325,64 +415,87 @@ function playersAt(t: number, team: Team): { x: number; y: number }[] {
 /* ── Ball ────────────────────────────────────────────────────────────────── */
 
 const CENTRE = { x: 50, y: 50 };
-
-/** Where the goal that was just scored sits, for the ball-in-net position. */
 const GOAL_MOUTH = { x: 98, y: 50 };
 
-function ballFromPossession(
+function lerp(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  p: number,
+) {
+  return { x: a.x + (b.x - a.x) * p, y: a.y + (b.y - a.y) * p };
+}
+
+/** Where a shot ends up. For saves and blocks this is the collector's own
+ *  position, which is what keeps the drawn line and the ball identical. */
+function shotEndPoint(
+  beat: Beat,
+  collector: { x: number; y: number },
+): { x: number; y: number } {
+  const outcome = beat.shot!.outcome;
+  if (outcome === "goal") return GOAL_MOUTH;
+  if (outcome === "off") {
+    return beat.team === "home" ? { x: 99, y: 24 } : { x: 1, y: 76 };
+  }
+  return collector;
+}
+
+type BallState = { x: number; y: number; inFlight: boolean };
+
+function ballDuringPlay(
   playTime: number,
   home: { x: number; y: number }[],
   away: { x: number; y: number }[],
-): { x: number; y: number; inFlight: boolean } {
-  const { from, to, endsAt } = possessionAt(playTime);
-  const pick = (team: Team, idx: number) => (team === "home" ? home : away)[idx];
-  const holder = pick(from.team, from.idx);
-  const flightStart = endsAt - PASS_FLIGHT_MS;
+): BallState {
+  const { beat, next } = beatAt(playTime);
+  const pos = (b: Beat) => (b.team === "home" ? home : away)[b.idx];
+  const holder = pos(beat);
+  const receiver = pos(next);
 
-  if (playTime < flightStart) {
-    return { x: holder.x, y: holder.y, inFlight: false };
+  if (beat.action === "foul") {
+    // Ball is dead at the offence, and the free kick is taken from the same
+    // spot by the same player — so it never jumps.
+    return { ...holder, inFlight: false };
   }
 
-  const receiver = pick(to.team, to.idx);
+  if (beat.action === "shot" && beat.shot) {
+    const fireAt = shotFireTime(beat, next);
+    if (playTime < fireAt) return { ...holder, inFlight: false };
+
+    const end = shotEndPoint(beat, receiver);
+    const flight = clamp((playTime - fireAt) / SHOT_MS, 0, 1);
+
+    if (flight < 1) {
+      return { ...lerp(holder, end, flight), inFlight: true };
+    }
+    if (beat.shot.outcome === "goal") {
+      return { ...end, inFlight: false };
+    }
+    // Recovery: the ball is gathered by whoever collects it.
+    const recover = clamp(
+      (playTime - (fireAt + SHOT_MS)) / RECOVER_MS,
+      0,
+      1,
+    );
+    return { ...lerp(end, receiver, recover), inFlight: recover < 1 };
+  }
+
+  const flightStart = next.at - PASS_FLIGHT_MS;
+  if (playTime < flightStart) return { ...holder, inFlight: false };
   const p = clamp((playTime - flightStart) / PASS_FLIGHT_MS, 0, 1);
-  const eased = 1 - Math.pow(1 - p, 2);
-  return {
-    x: holder.x + (receiver.x - holder.x) * eased,
-    y: holder.y + (receiver.y - holder.y) * eased,
-    inFlight: true,
-  };
+  return { ...lerp(holder, receiver, 1 - Math.pow(1 - p, 2)), inFlight: true };
 }
 
-export function ballAt(t: number): { x: number; y: number; inFlight: boolean } {
+export function ballAt(t: number): BallState {
   const phase = phaseAt(t);
-
   if (phase === "kickoff" || phase === "set") {
     return { ...CENTRE, inFlight: false };
   }
-
-  if (phase === "slowmo") {
-    // Struck at T_GOAL and travelling into the net across the slow-motion hold.
-    const shooter = playersAt(T_GOAL, "home")[9];
-    const p = clamp((t - T_GOAL) / (T_SLOWMO_END - T_GOAL), 0, 1);
-    const eased = Math.min(1, p * 2.2);
-    return {
-      x: shooter.x + (GOAL_MOUTH.x - shooter.x) * eased,
-      y: shooter.y + (GOAL_MOUTH.y - shooter.y) * eased,
-      inFlight: eased < 1,
-    };
-  }
-
+  if (phase === "slowmo") return { ...GOAL_MOUTH, inFlight: false };
   if (phase === "walkback") {
     const p = clamp((t - T_SLOWMO_END) / (T_WALKBACK_END - T_SLOWMO_END), 0, 1);
-    const eased = p * p * (3 - 2 * p);
-    return {
-      x: GOAL_MOUTH.x + (CENTRE.x - GOAL_MOUTH.x) * eased,
-      y: GOAL_MOUTH.y + (CENTRE.y - GOAL_MOUTH.y) * eased,
-      inFlight: false,
-    };
+    return { ...lerp(GOAL_MOUTH, CENTRE, p * p * (3 - 2 * p)), inFlight: false };
   }
-
-  return ballFromPossession(
+  return ballDuringPlay(
     playClockAt(t),
     playersAt(t, "home"),
     playersAt(t, "away"),
@@ -393,8 +506,8 @@ export function ballAt(t: number): { x: number; y: number; inFlight: boolean } {
 
 const BASE_PRICE = 4.82;
 
-function eventsBefore(t: number): MatchEvent[] {
-  return EVENTS.filter((event) => event.at <= t);
+function eventsBefore(t: number): DerivedEvent[] {
+  return EVENTS.filter((e) => e.at <= t);
 }
 
 function wobble(t: number): number {
@@ -417,10 +530,9 @@ const MOMENTUM_SLICE_MS = LOOP_MS / MOMENTUM_BARS;
 function momentumAt(t: number): number {
   const s = t / 1000;
   let value = Math.sin(s * 0.3) * 24 + Math.sin(s * 0.12 + 2) * 13;
-  for (const event of EVENTS) {
-    if (event.at > t || !event.impulse) continue;
-    const age = (t - event.at) / 1000;
-    value += event.impulse * Math.exp(-age / 4.5);
+  for (const e of EVENTS) {
+    if (e.at > t || !e.impulse) continue;
+    value += e.impulse * Math.exp(-(t - e.at) / 4500);
   }
   return clamp(value, -96, 96);
 }
@@ -430,13 +542,10 @@ export type MomentumBar = { value: number; revealed: boolean; current: boolean }
 /* ── State ───────────────────────────────────────────────────────────────── */
 
 export type ShotLine = {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
+  x1: number; y1: number; x2: number; y2: number;
   outcome: ShotOutcome;
   xg: number;
-  /** 1 → 0 as the line fades. */
+  /** 1 while in flight, decaying to 0 after contact. */
   strength: number;
 };
 
@@ -449,18 +558,19 @@ export type MatchState = {
   xg: number;
   passes: number;
   possession: number;
-  ball: { x: number; y: number; inFlight: boolean };
+  ball: BallState;
   ballTrail: { x: number; y: number }[];
   homePlayers: { x: number; y: number }[];
   awayPlayers: { x: number; y: number }[];
   holder: { team: Team; idx: number } | null;
+  /** Set briefly when possession flips through a challenge. */
+  tackle: { team: Team; idx: number } | null;
   feed: { minute: string; type: EventType; detail: string; xg?: number }[];
   momentum: MomentumBar[];
   momentumLeader: string;
   shotLine: ShotLine | null;
   card: { x: number; y: number; colour: "yellow" | "red" } | null;
   goalBadge: { scorer: string; minute: string; score: string } | null;
-  /** True while the net should flash. */
   netFlash: boolean;
   price: number;
   priceDelta: number;
@@ -468,7 +578,8 @@ export type MatchState = {
   candleIndex: number;
 };
 
-const SHOT_LINE_MS = 1_800;
+const SHOT_FADE_MS = 400;
+const TACKLE_FLASH_MS = 700;
 const GOAL_BADGE_MS = 8_000;
 
 function minuteAt(t: number): string {
@@ -481,14 +592,6 @@ function formatClock(t: number): string {
   const m = Math.floor(second / 60);
   const s = Math.floor(second % 60);
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-/** Target on the goal line for a shot, so lines converge plausibly. */
-function shotTarget(team: Team, outcome: ShotOutcome): { x: number; y: number } {
-  const x = team === "home" ? 98 : 2;
-  if (outcome === "off") return { x, y: team === "home" ? 26 : 74 };
-  if (outcome === "blocked") return { x: team === "home" ? 74 : 26, y: 44 };
-  return { x, y: 50 };
 }
 
 export const CANDLE_COUNT = 12;
@@ -504,7 +607,6 @@ export function matchStateAt(rawT: number): MatchState {
   const awayPlayers = playersAt(t, "away");
   const ball = ballAt(t);
 
-  // Trail sampled from the same pure function, so it can never disagree.
   const ballTrail =
     phase === "kickoff" || phase === "set"
       ? []
@@ -513,12 +615,60 @@ export function matchStateAt(rawT: number): MatchState {
           return { x: p.x, y: p.y };
         });
 
-  const holder =
-    phase === "play" || phase === "stoppage"
-      ? (() => {
-          const { from } = possessionAt(playTime);
-          return { team: from.team, idx: from.idx };
-        })()
+  const inPlay = phase === "play" || phase === "stoppage";
+  const { beat, next } = beatAt(playTime);
+
+  const holder = inPlay ? { team: beat.team, idx: beat.idx } : null;
+
+  // Tackle flash: possession has just flipped through a challenge.
+  const tackle =
+    inPlay && beat.via === "tackle" && playTime - beat.at < TACKLE_FLASH_MS
+      ? { team: beat.team, idx: beat.idx }
+      : null;
+
+  /* Shot line — derived from the beat currently taking the shot, so the line
+     exists exactly while the ball is travelling it. */
+  let shotLine: ShotLine | null = null;
+  if (beat.action === "shot" && beat.shot) {
+    const fireAt = shotFireTime(beat, next);
+    const since = playTime - fireAt;
+    if (since >= 0 && since < SHOT_MS + SHOT_FADE_MS) {
+      const origin = (beat.team === "home" ? homePlayers : awayPlayers)[beat.idx];
+      const collector = (next.team === "home" ? homePlayers : awayPlayers)[next.idx];
+      const end = shotEndPoint(beat, collector);
+      shotLine = {
+        x1: origin.x, y1: origin.y, x2: end.x, y2: end.y,
+        outcome: beat.shot.outcome,
+        xg: beat.shot.xg,
+        strength:
+          since <= SHOT_MS ? 1 : 1 - (since - SHOT_MS) / SHOT_FADE_MS,
+      };
+    }
+  }
+  // The goal's line is held through the slow-motion replay — that's what makes
+  // the replay worth watching.
+  if (phase === "slowmo") {
+    const goalBeat = BEATS.find((b) => b.shot?.outcome === "goal")!;
+    const origin = playersAt(realTimeOf(goalBeat.at), "home")[goalBeat.idx];
+    shotLine = {
+      x1: origin.x, y1: origin.y, x2: GOAL_MOUTH.x, y2: GOAL_MOUTH.y,
+      outcome: "goal", xg: goalBeat.shot!.xg, strength: 1,
+    };
+  }
+
+  // Card sits on the offender through the stoppage and a short beat after.
+  let card: MatchState["card"] = null;
+  if (t >= T_CARD && t < T_CARD_END + 1_200 && FOUL_BEAT.foulBy) {
+    const offender = (FOUL_BEAT.foulBy.team === "home" ? homePlayers : awayPlayers)[
+      FOUL_BEAT.foulBy.idx
+    ];
+    card = { x: offender.x, y: offender.y, colour: FOUL_BEAT.foulBy.card };
+  }
+
+  const scoring = past.filter((e) => e.scores).length;
+  const goalBadge =
+    t >= T_GOAL && t < T_GOAL + GOAL_BADGE_MS
+      ? { scorer: TRACKED_PLAYER, minute: minuteAt(T_GOAL), score: `${1 + scoring}–1` }
       : null;
 
   const currentSlice = Math.floor(t / MOMENTUM_SLICE_MS);
@@ -530,51 +680,6 @@ export function matchStateAt(rawT: number): MatchState {
       current: i === currentSlice,
     }),
   );
-
-  // Most recent shot, still within its fade window.
-  const recentShot = [...past]
-    .reverse()
-    .find((e) => e.shooter && e.outcome && t - e.at < SHOT_LINE_MS);
-
-  let shotLine: ShotLine | null = null;
-  if (recentShot?.shooter && recentShot.outcome) {
-    const shooters =
-      recentShot.shooter.team === "home"
-        ? playersAt(recentShot.at, "home")
-        : playersAt(recentShot.at, "away");
-    const origin = shooters[recentShot.shooter.idx];
-    const target = shotTarget(recentShot.shooter.team, recentShot.outcome);
-    shotLine = {
-      x1: origin.x,
-      y1: origin.y,
-      x2: target.x,
-      y2: target.y,
-      outcome: recentShot.outcome,
-      xg: recentShot.xg ?? 0,
-      strength: 1 - (t - recentShot.at) / SHOT_LINE_MS,
-    };
-  }
-
-  // The card sits on the offender for the stoppage plus a short beat after.
-  const cardEvent = EVENTS.find((e) => e.card && e.cardOn);
-  let card: MatchState["card"] = null;
-  if (cardEvent?.cardOn && t >= cardEvent.at && t < T_CARD_END + 1_200) {
-    const offenders =
-      cardEvent.cardOn.team === "home" ? homePlayers : awayPlayers;
-    const at = offenders[cardEvent.cardOn.idx];
-    card = { x: at.x, y: at.y, colour: cardEvent.card! };
-  }
-
-  const scoring = past.filter((e) => e.scores).length;
-  const goalEvent = EVENTS.find((e) => e.scores)!;
-  const goalBadge =
-    t >= T_GOAL && t < T_GOAL + GOAL_BADGE_MS
-      ? {
-          scorer: TRACKED_PLAYER,
-          minute: minuteAt(goalEvent.at),
-          score: `${1 + scoring}–1`,
-        }
-      : null;
 
   const price = priceAt(t);
   const lastPriceEvent = [...past].reverse().find((e) => e.priceStep);
@@ -594,15 +699,13 @@ export function matchStateAt(rawT: number): MatchState {
     homePlayers,
     awayPlayers,
     holder,
-    feed: [...past]
-      .reverse()
-      .slice(0, 6)
-      .map((e) => ({
-        minute: minuteAt(e.at),
-        type: e.type,
-        detail: e.detail,
-        xg: e.xg,
-      })),
+    tackle,
+    feed: [...past].reverse().slice(0, 6).map((e) => ({
+      minute: minuteAt(e.at),
+      type: e.type,
+      detail: e.detail,
+      xg: e.xg,
+    })),
     momentum,
     momentumLeader: nowMomentum >= 0 ? HOME.name : AWAY.name,
     shotLine,
@@ -624,19 +727,10 @@ export function matchStateAt(rawT: number): MatchState {
 /* ── Candles ─────────────────────────────────────────────────────────────── */
 
 export type Candle = {
-  open: number;
-  close: number;
-  high: number;
-  low: number;
-  live: boolean;
-  spike: boolean;
+  open: number; close: number; high: number; low: number;
+  live: boolean; spike: boolean;
 };
 
-/**
- * Only the rightmost candle moves: it grows as the price does, then closes and a
- * new one opens. Past candles are frozen, because in a real market past prices
- * don't change — the chart is a record, not decoration.
- */
 export function candlesAt(rawT: number): Candle[] {
   const t = ((rawT % LOOP_MS) + LOOP_MS) % LOOP_MS;
   const current = Math.floor(t / CANDLE_MS);
@@ -645,7 +739,6 @@ export function candlesAt(rawT: number): Candle[] {
     if (i > current) {
       return { open: NaN, close: NaN, high: NaN, low: NaN, live: false, spike: false };
     }
-
     const startMs = i * CANDLE_MS;
     const endMs = (i + 1) * CANDLE_MS;
     const isLive = i === current;
@@ -654,9 +747,7 @@ export function candlesAt(rawT: number): Candle[] {
 
     const samples: number[] = [];
     const limit = isLive ? t : endMs;
-    for (let ms = startMs; ms <= limit; ms += CANDLE_MS / 6) {
-      samples.push(priceAt(ms));
-    }
+    for (let ms = startMs; ms <= limit; ms += CANDLE_MS / 6) samples.push(priceAt(ms));
     if (samples.length === 0) samples.push(open);
 
     return {

@@ -164,12 +164,18 @@ export function MatchCenter() {
               {state.homePlayers.map((player, i) => {
                 const onBall =
                   state.holder?.team === "home" && state.holder.idx === i;
+                // Flashes at the exact moment possession flips through a
+                // challenge, at the spot it happened.
+                const tackling =
+                  state.tackle?.team === "home" && state.tackle.idx === i;
                 return (
                   <span
                     key={`h${i}`}
                     aria-hidden="true"
-                    className={`absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-lime transition-all duration-150 ease-linear ${
-                      onBall ? "ring-2 ring-lime/45 ring-offset-0" : ""
+                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-lime transition-all duration-150 ease-linear ${
+                      tackling
+                        ? "h-5 w-5 ring-4 ring-lime/35"
+                        : `h-3 w-3 ${onBall ? "ring-2 ring-lime/45" : ""}`
                     }`}
                     style={{ left: `${player.x}%`, top: `${player.y}%` }}
                   />
@@ -178,12 +184,16 @@ export function MatchCenter() {
               {state.awayPlayers.map((player, i) => {
                 const onBall =
                   state.holder?.team === "away" && state.holder.idx === i;
+                const tackling =
+                  state.tackle?.team === "away" && state.tackle.idx === i;
                 return (
                   <span
                     key={`a${i}`}
                     aria-hidden="true"
-                    className={`absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-floodlight/75 bg-midnight transition-all duration-150 ease-linear ${
-                      onBall ? "ring-2 ring-floodlight/35" : ""
+                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-floodlight/75 bg-midnight transition-all duration-150 ease-linear ${
+                      tackling
+                        ? "h-5 w-5 ring-4 ring-floodlight/25"
+                        : `h-3 w-3 ${onBall ? "ring-2 ring-floodlight/35" : ""}`
                     }`}
                     style={{ left: `${player.x}%`, top: `${player.y}%` }}
                   />
