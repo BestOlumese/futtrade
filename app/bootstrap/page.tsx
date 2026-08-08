@@ -6,6 +6,7 @@ import { getDb } from "@/lib/db";
 import { Atmosphere } from "@/components/atmosphere/atmosphere";
 import { Panel } from "@/components/ui/panel";
 import { ColyseusCheck } from "@/components/bootstrap/colyseus-check";
+import { mailStatus, verifyMailConnection } from "@/lib/mail";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +77,11 @@ export default async function BootstrapPage() {
     .catch(() => null);
 
   const database = await checkDatabase();
+  const mail = mailStatus();
+  // Only worth a live SMTP handshake if the credentials are even present.
+  const mailConn = mail.configured
+    ? await verifyMailConnection()
+    : { ok: false, detail: `missing ${mail.missing.join(" and ")}` };
   const colyseusEndpoint =
     process.env.NEXT_PUBLIC_COLYSEUS_URL ?? "ws://localhost:2567";
 
@@ -138,6 +144,33 @@ export default async function BootstrapPage() {
           </Panel>
 
           <ColyseusCheck endpoint={colyseusEndpoint} />
+
+          <Panel bodyClassName="p-5 flex flex-col gap-3">
+            <h2 className="display-md text-floodlight">Mail</h2>
+            <div className="flex flex-col">
+              <StatusRow
+                label="Credentials"
+                value={mail.configured ? "set" : "MISSING"}
+                tone={mail.configured ? "ok" : "bad"}
+              />
+              <StatusRow label="Sender" value={mail.sender ?? "—"} />
+              <StatusRow
+                label="SMTP"
+                value={mailConn.ok ? "authenticated" : "failed"}
+                tone={mailConn.ok ? "ok" : "bad"}
+              />
+            </div>
+            {!mailConn.ok && (
+              <p className="font-sans text-xs leading-relaxed text-live">
+                {mailConn.detail}
+              </p>
+            )}
+            <p className="mt-auto font-sans text-xs leading-relaxed text-floodlight/45">
+              Without this, sign-up still returns 200 but the verification link
+              is only written to the server log — and nobody can ever sign in,
+              because verification is required.
+            </p>
+          </Panel>
 
           <Panel bodyClassName="p-5 flex flex-col gap-3">
             <h2 className="display-md text-floodlight">Inngest</h2>

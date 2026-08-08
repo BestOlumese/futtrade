@@ -38,6 +38,56 @@ export function mailConfigured(): boolean {
 }
 
 /**
+ * Diagnostic for /bootstrap. Reports whether this running process can send,
+ * without exposing the credentials — the sender address is masked because that
+ * page is public.
+ *
+ * This exists because a missing credential is otherwise invisible: sign-up
+ * still returns 200, the link is written to a log nobody reads, and the only
+ * symptom is an inbox that stays empty.
+ */
+export function mailStatus(): {
+  configured: boolean;
+  sender: string | null;
+  missing: string[];
+} {
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  const missing = [
+    !user && "GMAIL_USER",
+    !pass && "GMAIL_APP_PASSWORD",
+  ].filter(Boolean) as string[];
+
+  return {
+    configured: Boolean(user && pass),
+    sender: user ? user.replace(/^(.{3}).*@/, "$1***@") : null,
+    missing,
+  };
+}
+
+/** Connects and authenticates without sending. Surfaces a bad App Password. */
+export async function verifyMailConnection(): Promise<{
+  ok: boolean;
+  detail: string;
+}> {
+  if (!mailConfigured()) {
+    return { ok: false, detail: "credentials not set" };
+  }
+  try {
+    await transporter().verify();
+    return { ok: true, detail: "Gmail accepted the app password" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      detail: /Username and Password not accepted|BadCredentials/i.test(message)
+        ? "rejected — needs a Google App Password, not the account password"
+        : message.slice(0, 120),
+    };
+  }
+}
+
+/**
  * Every message carries the raw URL as text beneath the button. Plenty of mail
  * clients strip, rewrite or fail to render the button, and a user who cannot
  * click still has to be able to copy.
