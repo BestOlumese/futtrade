@@ -117,11 +117,11 @@ export function MatchCenter() {
                   aria-hidden="true"
                   style={{ opacity: Math.max(0, state.shotLine.strength) }}
                 >
-                  <line
-                    x1={state.shotLine.x1}
-                    y1={state.shotLine.y1}
-                    x2={state.shotLine.x2}
-                    y2={state.shotLine.y2}
+                  {/* Quadratic, so a curled or dinked finish is drawn as the
+                      curve the ball actually travels. */}
+                  <path
+                    d={`M ${state.shotLine.x1} ${state.shotLine.y1} Q ${state.shotLine.cx} ${state.shotLine.cy} ${state.shotLine.x2} ${state.shotLine.y2}`}
+                    fill="none"
                     stroke={SHOT_COLOUR[state.shotLine.outcome]}
                     strokeWidth="1.5"
                     strokeDasharray={
@@ -222,12 +222,15 @@ export function MatchCenter() {
 
               {/* Goal badge — a compact broadcast bug, so the dots stay visible */}
               {state.goalBadge && (
-                <div className="absolute bottom-2 left-2 flex items-center gap-2 border border-lime/50 bg-midnight/85 px-2.5 py-1.5 backdrop-blur-sm">
-                  <span className="label text-lime">Goal</span>
-                  <span className="font-sans text-[11px] text-floodlight">
+                <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] items-center gap-2 border border-lime/50 bg-midnight/85 px-2.5 py-1.5 backdrop-blur-sm">
+                  <span className="label shrink-0 text-lime">Goal</span>
+                  <span className="shrink-0 font-sans text-[11px] text-floodlight">
                     {state.goalBadge.scorer}
                   </span>
-                  <span className="numeric text-[11px] text-floodlight/60">
+                  <span className="truncate font-sans text-[11px] text-floodlight/50">
+                    {state.goalBadge.note}
+                  </span>
+                  <span className="numeric shrink-0 text-[11px] text-floodlight/60">
                     {state.goalBadge.minute} · {state.goalBadge.score}
                   </span>
                 </div>
@@ -273,7 +276,7 @@ export function MatchCenter() {
 
               <div className="flex justify-between">
                 <span className="numeric text-[10px] text-mute">64&apos;</span>
-                <span className="numeric text-[10px] text-mute">74&apos;</span>
+                <span className="numeric text-[10px] text-mute">79&apos;</span>
               </div>
             </div>
           </div>
