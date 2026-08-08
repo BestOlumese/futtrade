@@ -19,7 +19,7 @@ All four services below have a free tier that needs **no credit card**.
 | Better Auth | ✅ verified locally | ✅ sign-up, session and sign-in all 200 in production |
 | Colyseus server | ✅ boots, WS round-trip 5ms | ✅ https://futtrade-server.onrender.com, browser round trip 399ms |
 | Inngest | ✅ route registers 1 function | ⚠️ synced and signing key enforced — **no run observed yet** |
-| `ALLOWED_ORIGINS` | n/a | ⬜ **unset** — server currently answers `Access-Control-Allow-Origin: *` |
+| `ALLOWED_ORIGINS` | n/a | ✅ set and enforced — hostile origins refused, own origin echoed |
 
 Re-check any time with:
 

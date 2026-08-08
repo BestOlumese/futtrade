@@ -20,16 +20,20 @@ Colyseus health 200, WebSocket round trip from a real browser (399ms), Neon
 connected, `timescaledb` enabled, Inngest endpoint protected by its signing key.
 Sign-up, session and sign-in all 200 against the deployed app.
 
-Two items remain before this phase is closed:
+`ALLOWED_ORIGINS` was set on 2026-08-08 and verified: a request claiming to come
+from `evil.example.com` now receives no `Access-Control-Allow-Origin` header,
+while `https://futtrade.vercel.app` is echoed back with `Vary: Origin`. The
+browser handshake still succeeds afterwards (317ms), which is the check that
+matters — a slightly wrong value here locks out the real app rather than the
+attacker.
 
-1. **`ALLOWED_ORIGINS` is unset on Render**, so the match server answers
-   `Access-Control-Allow-Origin: *` — verified by a request claiming to be from
-   `evil.example.com`, which was accepted. Any site can currently reserve a seat.
-   Harmless while the rooms are empty; not acceptable once matchmaking is real.
-2. **No `bootstrap-heartbeat` run has been observed yet.** Registering the
-   function is not the exit criterion — the whole reason this project uses
-   Inngest rather than `pg_cron` is that a scheduler which silently never runs
-   is the failure mode being designed against.
+One item remains before this phase is closed:
+
+- **A `bootstrap-heartbeat` run must be observed in the Inngest dashboard.**
+  Registering the function is not the exit criterion — the whole reason this
+  project uses Inngest rather than `pg_cron` is that a scheduler which silently
+  never runs is the failure mode being designed against. This one cannot be
+  checked from outside; it has to be read off the Runs tab.
 
 ## Explicitly out of scope
 - Any gameplay logic
