@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { jwtVerify } from "jose";
 
 /**
@@ -20,11 +21,28 @@ export type TicketClaims = {
   username: string;
 };
 
+/**
+ * A short, non-reversible fingerprint of the shared secret.
+ *
+ * The app publishes the same fingerprint, so a mismatch between the two
+ * deployments can be SEEN rather than inferred from a failed join. Eight hex
+ * characters of a SHA-256 over a 256-bit random secret reveals nothing usable —
+ * and the alternative, guessing whether two invisible env vars are equal, is
+ * how an afternoon disappears.
+ */
+export function secretFingerprint(): string | null {
+  const value = process.env.MATCH_TICKET_SECRET;
+  if (!value) return null;
+  return createHash("sha256").update(value).digest("hex").slice(0, 8);
+}
+
 export async function verifyTicket(token: string): Promise<TicketClaims> {
   const value = process.env.MATCH_TICKET_SECRET;
   if (!value) {
+    // Deliberately distinguished from a bad signature: this is a deployment
+    // fault, not a suspicious client, and the two need different fixes.
     throw new Error(
-      "MATCH_TICKET_SECRET is not set on the match server. It must be identical to the value in the Next.js app.",
+      "NOT_CONFIGURED: MATCH_TICKET_SECRET is not set on the match server. It must be identical to the value in the Next.js app.",
     );
   }
 

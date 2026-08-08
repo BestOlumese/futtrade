@@ -4,6 +4,7 @@ import { Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { BootstrapRoom } from "./rooms/BootstrapRoom.js";
 import { MatchRoom } from "./rooms/MatchRoom.js";
+import { secretFingerprint } from "./match-ticket.js";
 
 const port = Number(process.env.PORT) || 2567;
 
@@ -43,7 +44,15 @@ app.use((req, res, next) => {
 // Render's health check hits this. Keep it dependency-free and instant — it
 // must not touch the database, or a slow Neon wake would fail the deploy.
 app.get("/healthz", (_req, res) => {
-  res.json({ status: "ok", uptime: process.uptime() });
+  // `ticketSecret` lets the app and this server be compared without either
+  // exposing the secret. Same fingerprint = same value; different = the join
+  // will fail no matter how correct everything else looks.
+  const fingerprint = secretFingerprint();
+  res.json({
+    status: "ok",
+    uptime: process.uptime(),
+    ticketSecret: fingerprint ? { configured: true, fingerprint } : { configured: false },
+  });
 });
 
 const httpServer = createServer(app);

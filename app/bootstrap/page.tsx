@@ -7,6 +7,7 @@ import { Atmosphere } from "@/components/atmosphere/atmosphere";
 import { Panel } from "@/components/ui/panel";
 import { ColyseusCheck } from "@/components/bootstrap/colyseus-check";
 import { mailStatus, verifyMailConnection } from "@/lib/mail";
+import { secretFingerprint } from "@/lib/match-ticket";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +79,7 @@ export default async function BootstrapPage() {
 
   const database = await checkDatabase();
   const mail = mailStatus();
+  const ticketFingerprint = secretFingerprint();
   // Only worth a live SMTP handshake if the credentials are even present.
   const mailConn = mail.configured
     ? await verifyMailConnection()
@@ -169,6 +171,24 @@ export default async function BootstrapPage() {
               Without this, sign-up still returns 200 but the verification link
               is only written to the server log — and nobody can ever sign in,
               because verification is required.
+            </p>
+          </Panel>
+
+          <Panel bodyClassName="p-5 flex flex-col gap-3">
+            <h2 className="display-md text-floodlight">Match tickets</h2>
+            <div className="flex flex-col">
+              <StatusRow
+                label="Secret"
+                value={ticketFingerprint ? "set" : "MISSING"}
+                tone={ticketFingerprint ? "ok" : "bad"}
+              />
+              <StatusRow label="Fingerprint" value={ticketFingerprint ?? "—"} />
+            </div>
+            <p className="mt-auto font-sans text-xs leading-relaxed text-floodlight/45">
+              Compare this with <span className="numeric">ticketSecret</span> on
+              the match server&apos;s <span className="numeric">/healthz</span>.
+              The two must be identical, or a join fails however correct
+              everything else looks.
             </p>
           </Panel>
 

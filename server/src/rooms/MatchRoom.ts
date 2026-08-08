@@ -67,6 +67,14 @@ export class MatchRoom extends Room<MatchState> {
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       console.warn("[match] rejected join:", reason);
+      // A missing secret is a deployment fault and needs a different fix from a
+      // bad ticket — saying so beats making someone guess which they have.
+      if (reason.startsWith("NOT_CONFIGURED")) {
+        throw new ServerError(
+          503,
+          "The match server is missing MATCH_TICKET_SECRET.",
+        );
+      }
       throw new ServerError(401, "That sign-in couldn't be verified.");
     }
   }

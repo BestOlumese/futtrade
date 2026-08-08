@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 
 /**
@@ -30,6 +31,18 @@ export type TicketClaims = {
   userId: string;
   username: string;
 };
+
+/**
+ * A short, non-reversible fingerprint of the shared secret. The match server
+ * publishes the same value on /healthz, so a mismatch between the two
+ * deployments can be SEEN rather than inferred from a failed join. Eight hex
+ * characters of a SHA-256 over a 256-bit random secret reveals nothing usable.
+ */
+export function secretFingerprint(): string | null {
+  const value = process.env.MATCH_TICKET_SECRET;
+  if (!value) return null;
+  return createHash("sha256").update(value).digest("hex").slice(0, 8);
+}
 
 function secret(): Uint8Array {
   const value = process.env.MATCH_TICKET_SECRET;
