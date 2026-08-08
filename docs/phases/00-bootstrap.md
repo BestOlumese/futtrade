@@ -7,17 +7,29 @@
 Prove the full deployment pipeline works end-to-end before any gameplay code exists — an empty "hello world" on every piece of infra, deployed and talking to each other.
 
 ## Tasks
-- [x] Scaffold Next.js (App Router, TypeScript strict) — [ ] deploy to Vercel
+- [x] Scaffold Next.js (App Router, TypeScript strict), deploy to Vercel
 - [x] Scaffold Neon Postgres project, wire Drizzle, run first migration
 - [x] Enable the `timescaledb` extension on the Neon project (2.17.1)
 - [x] Wire Better Auth, working sign-up/sign-in against Neon
-- [x] Scaffold a Colyseus server (empty room) as a Docker image — [ ] deploy to Render
-- [x] Confirm the client can open a WebSocket to the Colyseus room and exchange a test message (verified locally) — [ ] re-verify against the deployed room
-- [x] Wire Inngest, one no-op scheduled function registered — [ ] deploy it and confirm it fires on schedule
+- [x] Scaffold a Colyseus server (empty room) as a Docker image, deploy to Render
+- [x] Confirm the Next.js client can open a WebSocket to the deployed Colyseus room and exchange a test message
+- [x] Wire Inngest — [ ] confirm a scheduled run actually fires
 
-Remaining work is account-bound (Vercel / Render / Inngest credentials) and is
-written up step by step in `DEPLOY.md` at the repo root. `/bootstrap` in the
-running app renders the live status of all four pieces.
+Verified against production on 2026-08-08 with `node scripts/verify-deploy.mjs`:
+Colyseus health 200, WebSocket round trip from a real browser (399ms), Neon
+connected, `timescaledb` enabled, Inngest endpoint protected by its signing key.
+Sign-up, session and sign-in all 200 against the deployed app.
+
+Two items remain before this phase is closed:
+
+1. **`ALLOWED_ORIGINS` is unset on Render**, so the match server answers
+   `Access-Control-Allow-Origin: *` — verified by a request claiming to be from
+   `evil.example.com`, which was accepted. Any site can currently reserve a seat.
+   Harmless while the rooms are empty; not acceptable once matchmaking is real.
+2. **No `bootstrap-heartbeat` run has been observed yet.** Registering the
+   function is not the exit criterion — the whole reason this project uses
+   Inngest rather than `pg_cron` is that a scheduler which silently never runs
+   is the failure mode being designed against.
 
 ## Explicitly out of scope
 - Any gameplay logic

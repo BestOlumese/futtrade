@@ -13,12 +13,19 @@ All four services below have a free tier that needs **no credit card**.
 
 | Piece | Local | Production |
 |---|---|---|
-| Next.js app | ✅ builds, runs | ⬜ deploy to Vercel |
-| Neon Postgres + Drizzle | ✅ migrations applied | ✅ already production (Neon has no separate local DB) |
+| Next.js app | ✅ builds, runs | ✅ https://futtrade.vercel.app |
+| Neon Postgres + Drizzle | ✅ migrations applied | ✅ connected from the deployed app |
 | `timescaledb` | ✅ enabled (2.17.1) | ✅ same database |
-| Better Auth | ✅ sign-up + sign-in verified against Neon | ⬜ needs Vercel env vars |
-| Colyseus server | ✅ boots, WS round-trip 5ms | ⬜ deploy to Render |
-| Inngest | ✅ route registers 1 function | ⬜ needs keys + a real scheduled run |
+| Better Auth | ✅ verified locally | ✅ sign-up, session and sign-in all 200 in production |
+| Colyseus server | ✅ boots, WS round-trip 5ms | ✅ https://futtrade-server.onrender.com, browser round trip 399ms |
+| Inngest | ✅ route registers 1 function | ⚠️ synced and signing key enforced — **no run observed yet** |
+| `ALLOWED_ORIGINS` | n/a | ⬜ **unset** — server currently answers `Access-Control-Allow-Origin: *` |
+
+Re-check any time with:
+
+```bash
+node scripts/verify-deploy.mjs https://futtrade.vercel.app https://futtrade-server.onrender.com
+```
 
 ---
 
