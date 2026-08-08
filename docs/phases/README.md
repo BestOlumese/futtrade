@@ -3,10 +3,10 @@
 27 phases (00-26), each independently scoped with its own goal, tasks, and exit criteria. Don't let scope from a later phase leak backward — the ordering exists to de-risk the hardest system (the live sim) before investing in anything that depends on it.
 
 ## Foundation
-- [00 — Bootstrap](00-bootstrap.md)
+- [x] [00 — Bootstrap](00-bootstrap.md) — **complete**, closed 2026-08-08 and verified in production
 
 ## Core live match engine (the highest-risk system — build and validate first)
-- [01 — Tick Loop Skeleton](01-tick-loop-skeleton.md)
+- [01 — Tick Loop Skeleton](01-tick-loop-skeleton.md) ← **current**
 - [02 — Minimal Sim + Two Tactical Dials](02-minimal-sim-two-dials.md)
 - [03 — Server Validation & Anti-Cheat Guardrails](03-server-validation-guardrails.md)
 - [04 — Event Schema & Persistence](04-event-schema-persistence.md)
