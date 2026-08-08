@@ -1,25 +1,32 @@
 import type { ReactNode } from "react";
 
 /**
- * The clipped panel — the system's signature structural device.
- * One chamfered corner (top-left), a `steel` edge, and a 2px edge-line tracing
- * the chamfer only. See docs/04-design-system.md § Layout signature.
+ * The angular panel — the system's signature device.
+ * Cuts on two opposing corners (top-left, bottom-right) with a 2px accent
+ * tracing the cut edges only. See docs/04-design-system.md § Shape language.
  *
- * `live` switches the edge-line to `tally`, and must only be used for something
- * genuinely in progress.
+ * `live` switches the accent to `live` red, and must only be used for something
+ * genuinely in progress. `brackets` adds HUD corner marks — hero and feature
+ * panels only, or they stop meaning anything.
  */
 export function Panel({
   children,
   live = false,
+  brackets = false,
   className = "",
+  bodyClassName = "",
 }: {
   children: ReactNode;
   live?: boolean;
+  brackets?: boolean;
   className?: string;
+  bodyClassName?: string;
 }) {
   return (
-    <div className={`panel ${live ? "panel-live" : ""} ${className}`}>
-      <div className="panel-body">{children}</div>
+    <div className={brackets ? "brackets" : undefined}>
+      <div className={`panel ${live ? "panel-live" : ""} ${className}`}>
+        <div className={`panel-body ${bodyClassName}`}>{children}</div>
+      </div>
     </div>
   );
 }

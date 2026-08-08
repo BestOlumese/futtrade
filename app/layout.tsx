@@ -1,39 +1,28 @@
 import type { Metadata } from "next";
-import { Big_Shoulders, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 // docs/04-design-system.md § Typography.
-// Display is condensed and heavy — it should feel like a scoreboard, not decoration.
-//
-// `opsz` is requested explicitly. Big Shoulders is an optical-size variable
-// font whose axis defaults to 14, so without this every headline renders with
-// letterforms drawn for body copy — wide and loose at 80px, which is exactly
-// the opposite of the condensed, structural feel the design system asks for.
-// The .display-* utilities in globals.css set the axis to match their size.
-//
-// `fallback` is set because Google publishes no metric overrides for this
-// family; without it the fallback is a non-condensed system font and the page
-// visibly reflows when the webfont lands.
-const bigShoulders = Big_Shoulders({
+// Display carries the character of the brand; body is chosen for legibility at
+// the small sizes the working surfaces demand; mono is for anything that moves.
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
-  axes: ["opsz"],
-  variable: "--font-big-shoulders",
-  display: "swap",
-  fallback: ["Arial Narrow", "Helvetica Neue Condensed", "sans-serif"],
-});
-
-const plexSans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-plex-sans",
+  weight: ["500", "700"],
+  variable: "--font-space-grotesk",
   display: "swap",
 });
 
-// Every live number in the product renders in this face, with tabular-nums.
-const plexMono = IBM_Plex_Mono({
+const inter = Inter({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
-  variable: "--font-plex-mono",
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-jetbrains-mono",
   display: "swap",
 });
 
@@ -49,7 +38,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${bigShoulders.variable} ${plexSans.variable} ${plexMono.variable} antialiased`}
+        className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable}`}
       >
         {children}
       </body>

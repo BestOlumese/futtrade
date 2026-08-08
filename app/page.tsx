@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
-import { HeroMatchCard } from "@/components/landing/hero-match-card";
-import { Pillars } from "@/components/landing/pillars";
+import { Atmosphere, Glow } from "@/components/atmosphere/atmosphere";
+import { SiteHeader } from "@/components/landing/site-header";
+import { Hero } from "@/components/landing/hero";
+import { MatchCenter } from "@/components/landing/match-center";
+import { TacticsAndDevelopment } from "@/components/landing/tactics-development";
+import { Bourse } from "@/components/landing/bourse";
 import { HowItWorks } from "@/components/landing/how-it-works";
+import { NumbersBand } from "@/components/landing/numbers-band";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { ButtonLink } from "@/components/ui/button";
 
@@ -14,80 +19,45 @@ export const metadata: Metadata = {
 /**
  * Landing page — docs/05-landing-page.md.
  *
- * The page's single job is to convince a football-and-numbers person that this
- * is a real live game within the first screen, so the hero leads with a running
- * match rather than a headline over a gradient.
- *
- * Deliberately absent, per the spec: stock stadium photography, animated
- * gradients, scroll-triggered fade-ins on every section, and 01/02/03 markers
- * on the three pillars (that isn't a real sequence — the one further down is).
+ * A brand surface: full atmosphere stack, long cinematic scroll. The hero
+ * doesn't describe the product, it runs it.
  */
 export default function Home() {
   return (
-    <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-24 px-6 py-12 sm:py-16">
-      <header className="flex items-center justify-between">
-        <span className="eyebrow text-floodlight">Empire Live</span>
-        <nav className="flex items-center gap-6 font-sans text-sm">
-          <a
-            href="#how-it-works"
-            className="hidden text-floodlight/55 underline-offset-4 hover:text-signal hover:underline sm:inline"
-          >
-            How it works
-          </a>
-          <a
-            href="/sign-in"
-            className="text-floodlight/55 underline-offset-4 hover:text-signal hover:underline"
-          >
-            Sign in
-          </a>
-        </nav>
-      </header>
+    <>
+      <Atmosphere variant="full" />
 
-      <main className="flex flex-col gap-24">
-        {/* Hero — the match card comes first; the words come second. */}
-        <section className="grid items-center gap-10 lg:grid-cols-[1.1fr_1fr] lg:gap-14">
-          <HeroMatchCard />
+      <div className="mx-auto max-w-7xl px-6">
+        <SiteHeader />
 
-          <div className="flex flex-col gap-7">
-            <h1 className="display-xl text-floodlight">
-              Real matches. Real managers. A market that moves because they
-              happened.
-            </h1>
-
-            <p className="max-w-md font-sans text-base leading-relaxed text-floodlight/60">
-              Two managers, the same ninety minutes, decisions that land while
-              the ball is still moving. Every pass, shot and card is recorded —
-              and every price on the Bourse moves off that record.
-            </p>
-
-            <div className="flex flex-wrap gap-3">
-              <ButtonLink href="/sign-up">Start managing</ButtonLink>
-              <ButtonLink href="/bootstrap" variant="secondary">
-                Watch a live match
-              </ButtonLink>
-            </div>
-          </div>
-        </section>
-
-        <Pillars />
-
-        <div id="how-it-works" className="scroll-mt-12">
+        <main className="flex flex-col gap-28 pb-28 sm:gap-36">
+          <Hero />
+          <MatchCenter />
+          <TacticsAndDevelopment />
+          <Bourse />
           <HowItWorks />
-        </div>
+          <NumbersBand />
 
-        {/* Closing CTA — restrained by design. No second hero, no countdown. */}
-        <section className="flex flex-col items-start gap-6">
-          <h2 className="display-lg max-w-2xl text-floodlight">
-            Take a club. Play the next match.
-          </h2>
-          <p className="max-w-md font-sans text-base leading-relaxed text-floodlight/60">
-            Free to start. Your first match can be tonight.
-          </p>
-          <ButtonLink href="/sign-up">Start managing</ButtonLink>
-        </section>
-      </main>
+          {/* Closing CTA — restrained. One glow, one repeat of the primary
+              action, no second hero and no urgency gimmick. */}
+          <section className="relative flex flex-col items-start gap-7 py-10">
+            <Glow className="-bottom-32 left-[20%] h-96 w-136" />
 
-      <SiteFooter />
-    </div>
+            <div className="relative flex flex-col items-start gap-7">
+              <h2 className="display-xl max-w-[18ch] text-floodlight">
+                Take a club. Play the next match.
+              </h2>
+              <p className="max-w-md font-sans text-base leading-relaxed text-floodlight/55">
+                Free to start. Your first match can be tonight.
+              </p>
+              <ButtonLink href="/sign-up">Start managing</ButtonLink>
+            </div>
+          </section>
+        </main>
+
+        <SiteFooter />
+        <div className="h-10" />
+      </div>
+    </>
   );
 }

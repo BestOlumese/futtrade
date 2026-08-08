@@ -45,7 +45,7 @@ export default function ForgotPasswordPage() {
         footer={
           <Link
             href="/sign-in"
-            className="text-floodlight/55 underline-offset-4 hover:text-signal hover:underline"
+            className="text-floodlight/55 underline-offset-4 hover:text-lime hover:underline"
           >
             Back to sign in
           </Link>
@@ -54,7 +54,7 @@ export default function ForgotPasswordPage() {
         <button
           type="button"
           onClick={() => setSent(false)}
-          className="self-start font-sans text-sm text-signal underline-offset-4 hover:underline"
+          className="self-start font-sans text-sm text-lime underline-offset-4 hover:underline"
         >
           Use a different email
         </button>
@@ -69,7 +69,7 @@ export default function ForgotPasswordPage() {
       footer={
         <Link
           href="/sign-in"
-          className="text-floodlight/55 underline-offset-4 hover:text-signal hover:underline"
+          className="text-floodlight/55 underline-offset-4 hover:text-lime hover:underline"
         >
           Back to sign in
         </Link>

@@ -1,230 +1,348 @@
 @import "tailwindcss";
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Empire Live — "Stadium Floodlight"
+   Empire Live — "Floodlight Protocol"
    Single source of truth: docs/04-design-system.md
-   Every value below is a token from that doc. Components consume these; they
-   never hardcode a hex, a font, or a radius.
+   Components consume these tokens; they never hardcode a hex, font or radius.
    ───────────────────────────────────────────────────────────────────────────*/
 
 @theme {
-  /* Color — see docs/04-design-system.md § Color */
-  --color-void: #0a0d12;
-  --color-floodlight: #f3f6fb;
-  --color-signal: #35c7a6;
-  --color-tally: #e8362e;
-  --color-pitch-shadow: #132018;
-  --color-steel: #3e4a59;
+  /* Color. Base is blue-black, never neutral grey — that cool undertone is
+     what makes the lime read as electric rather than dirty. */
+  --color-midnight: #070b14;
+  --color-surface: #0e1523;
+  --color-surface-2: #151f33;
+  --color-lime: #c8ff2e;
+  --color-floodlight: #eaf0fa;
+  --color-live: #ff3b30;
+  /* Borders and dividers ONLY. At 2.8:1 on midnight this fails WCAG AA and
+     must never be used for text — that's what `mute` is for. */
+  --color-steel: #4a5a72;
+  /* Secondary/label text. 5.3:1 on `surface`, so it clears AA. */
+  --color-mute: #7d8ba3;
 
-  /* Type — display is condensed and does real work; mono is for live numbers */
-  --font-display: var(--font-big-shoulders), ui-sans-serif, system-ui, sans-serif;
-  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  /* Type */
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
 
-  /* Tracking. The design system specifies -1% to -2% on display type; the
-     Tailwind default `tracking-tight` is -2.5%, which overshoots it. */
-  --tracking-display: -0.015em;
-  --tracking-eyebrow: 0.14em;
+  --tracking-display: -0.025em;
+  --tracking-label: 0.12em;
 
-  /* Layout signature — the chamfer. One diagonal cut, top-left by default. */
-  --chamfer: 14px;
-  --chamfer-edge: 2px;
-
-  /* No rounding anywhere in the system, on anything. */
+  /* Shape. Diagonal cuts on opposing corners; no rounding anywhere. */
+  --cut: 18px;
+  --cut-sm: 10px;
+  --cut-edge: 2px;
   --radius-none: 0px;
 
-  /* Motion — hover/focus is near-instant by design; this is a data-dense,
-     live-stakes product, not a portfolio site. */
   --duration-instant: 120ms;
 }
 
-/* Derived states. Per the design system, these are computed from the tokens
-   above — do NOT add new named colors for them. */
-@utility text-muted {
-  color: color-mix(in srgb, var(--color-floodlight) 45%, transparent);
+@layer base {
+  * {
+    /* The system has no rounded corners. The live dot opts back in explicitly. */
+    border-radius: var(--radius-none);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: var(--color-midnight);
+    color: var(--color-floodlight);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-lime);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-lime);
+    color: var(--color-midnight);
+  }
 }
 
-/* ─── Display type scale ──────────────────────────────────────────────────────
-   The scale is condensed-display-led: the display face is meant to feel like
-   it's doing real work, so it is deliberately large relative to body copy.
-
-   Each step sets `opsz` to match its own rendered size. That axis is the whole
-   point of this face — at 80px with opsz left at its default of 14, the
-   letterforms are the ones drawn for small text, and the headline reads wide
-   and generic instead of tight and structural.
-
-   Headlines are sentence case. Uppercase is reserved for genuine labels — see
-   .eyebrow below — because condensed caps at headline length reads as shouting.
+/* ─── Type scale ──────────────────────────────────────────────────────────────
+   Display is large and heavy on brand surfaces, restrained on working ones.
+   Same system, different scale.
    ───────────────────────────────────────────────────────────────────────────*/
+
+@utility display-hero {
+  font-family: var(--font-display);
+  font-size: clamp(2.75rem, 6.5vw, 5.25rem);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: var(--tracking-display);
+}
 
 @utility display-xl {
   font-family: var(--font-display);
-  font-size: clamp(3.25rem, 8vw, 5.5rem);
-  font-weight: 800;
-  line-height: 0.9;
+  font-size: clamp(2.25rem, 4.5vw, 3.5rem);
+  font-weight: 700;
+  line-height: 1;
   letter-spacing: var(--tracking-display);
-  font-variation-settings: "opsz" 72;
 }
 
 @utility display-lg {
   font-family: var(--font-display);
-  font-size: clamp(2.5rem, 5vw, 3.5rem);
-  font-weight: 800;
-  line-height: 0.94;
-  letter-spacing: var(--tracking-display);
-  font-variation-settings: "opsz" 56;
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
 }
 
 @utility display-md {
   font-family: var(--font-display);
-  font-size: clamp(1.75rem, 3vw, 2.125rem);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: var(--tracking-display);
-  font-variation-settings: "opsz" 32;
-}
-
-@utility display-sm {
-  font-family: var(--font-display);
   font-size: 1.375rem;
   font-weight: 700;
-  line-height: 1.05;
-  letter-spacing: var(--tracking-display);
-  font-variation-settings: "opsz" 24;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
 }
 
-/* The one place uppercase is correct: a genuine label or eyebrow, short enough
-   that condensed caps read as a signpost rather than shouting. */
-@utility eyebrow {
-  font-family: var(--font-display);
-  font-size: 0.8125rem;
-  font-weight: 700;
+/* Short labels only — badges, eyebrows, table headers, nav. Never a headline. */
+@utility label {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 600;
   line-height: 1;
   text-transform: uppercase;
-  letter-spacing: var(--tracking-eyebrow);
-  font-variation-settings: "opsz" 14;
+  letter-spacing: var(--tracking-label);
 }
 
-/* Scores, prices, clocks, tickers. Always tabular so digits never reflow. */
+/* Every number that changes. Tabular so digits never reflow. */
 @utility numeric {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
 
-@layer base {
-  * {
-    /* Enforced globally: the system has no rounded corners. */
-    border-radius: var(--radius-none);
-  }
-
-  body {
-    background: var(--color-void);
-    color: var(--color-floodlight);
-    font-family: var(--font-sans);
-  }
-
-  /* Visible keyboard focus on every interactive element, using `signal`.
-     Accessibility floor — non-negotiable. */
-  :focus-visible {
-    outline: 2px solid var(--color-signal);
-    outline-offset: 2px;
-  }
-
-  /* Any number that updates live must not reflow as it changes. */
-  .tabular,
-  input[type="number"] {
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-  }
-}
-
-/* ─── The clipped panel ───────────────────────────────────────────────────────
-   The signature structural device: one chamfered corner (top-left), never a
-   border-radius. Reserved for panels/cards — never applied to buttons or
-   inputs, so it stays meaningful rather than decorative.
+/* ─── Shape: the angular cut ──────────────────────────────────────────────────
+   Cuts on two OPPOSING corners (top-left, bottom-right). The opposition is what
+   makes it read as deliberate rather than as a clipped mistake.
 
    Two layers, because clip-path also clips borders: the outer element paints
-   the 1px `steel` edge, the inner element paints the `pitch-shadow` fill.
+   the border color, the inner paints the fill.
    ───────────────────────────────────────────────────────────────────────────*/
+
+@utility cut-shape {
+  clip-path: polygon(
+    var(--cut) 0,
+    100% 0,
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    0 100%,
+    0 var(--cut)
+  );
+}
 
 @utility panel {
   position: relative;
   padding: 1px;
-  background: color-mix(in srgb, var(--color-steel) 30%, transparent);
+  background: color-mix(in srgb, var(--color-steel) 35%, transparent);
   clip-path: polygon(
-    var(--chamfer) 0,
+    var(--cut) 0,
     100% 0,
-    100% 100%,
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
     0 100%,
-    0 var(--chamfer)
+    0 var(--cut)
   );
 
-  /* The 2px edge-line traces the chamfered edge ONLY, never the full border.
-     `signal` for a standard panel; `tally` only when the panel is genuinely
-     live or urgent (see .panel-live). */
-  &::before {
+  /* 2px accent tracing the cut edges only — never the full border. */
+  &::before,
+  &::after {
     content: "";
     position: absolute;
+    z-index: 2;
+    width: calc(var(--cut) * 1.4142);
+    height: var(--cut-edge);
+    background: var(--color-lime);
+    transform-origin: 0 0;
+  }
+
+  &::before {
     top: 0;
     left: 0;
-    z-index: 1;
-    width: calc(var(--chamfer) * 1.4142);
-    height: var(--chamfer-edge);
-    background: var(--color-signal);
-    transform-origin: 0 0;
-    transform: translateY(var(--chamfer)) rotate(-45deg);
+    transform: translateY(var(--cut)) rotate(-45deg);
+  }
+
+  &::after {
+    bottom: 0;
+    right: 0;
+    transform: translate(0, calc(var(--cut-edge) * -1)) rotate(-45deg);
+    transform-origin: 100% 100%;
   }
 }
 
 @utility panel-body {
   position: relative;
   height: 100%;
-  background: var(--color-pitch-shadow);
+  background: var(--color-surface);
   clip-path: polygon(
-    calc(var(--chamfer) - 1px) 0,
+    calc(var(--cut) - 1px) 0,
     100% 0,
-    100% 100%,
+    100% calc(100% - var(--cut) + 1px),
+    calc(100% - var(--cut) + 1px) 100%,
     0 100%,
-    0 calc(var(--chamfer) - 1px)
+    0 calc(var(--cut) - 1px)
   );
 }
 
-/* Live/urgent panel — same shape, `tally` edge-line. Only for something that
-   is actually in progress. */
+/* Live/urgent panel — same shape, `live` edge-line. Only for something that is
+   actually in progress. */
 @utility panel-live {
-  &::before {
-    background: var(--color-tally);
+  &::before,
+  &::after {
+    background: var(--color-live);
   }
 }
 
-/* ─── The tally dot ───────────────────────────────────────────────────────────
-   A broadcast camera's tally light. Means live, and only live. If nothing is
-   actually live, there is no dot. Always paired with the word "LIVE" in
-   markup — color is never the only signal.
+/* HUD corner brackets. Hero and feature panels only — not every card, or they
+   stop meaning anything. */
+@utility brackets {
+  position: relative;
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border-color: color-mix(in srgb, var(--color-lime) 55%, transparent);
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  &::before {
+    top: -6px;
+    right: -6px;
+    border-top: 1px solid;
+    border-right: 1px solid;
+  }
+
+  &::after {
+    bottom: -6px;
+    left: -6px;
+    border-bottom: 1px solid;
+    border-left: 1px solid;
+  }
+}
+
+/* Buttons: a single cut, bottom-right. Smaller than a panel's, never bracketed. */
+@utility cut-btn {
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% calc(100% - var(--cut-sm)),
+    calc(100% - var(--cut-sm)) 100%,
+    0 100%
+  );
+}
+
+/* ─── Atmosphere ──────────────────────────────────────────────────────────────
+   Generated, not photographed. Brand surfaces get the full stack; working
+   surfaces get wash + grain only, because legibility always wins.
    ───────────────────────────────────────────────────────────────────────────*/
 
-@utility tally-dot {
+/* 1. Base wash — depth before anything else is drawn. */
+@utility atmos-wash {
+  background:
+    radial-gradient(
+      120% 80% at 70% 0%,
+      color-mix(in srgb, var(--color-surface) 90%, transparent) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      90% 60% at 10% 100%,
+      color-mix(in srgb, var(--color-surface-2) 55%, transparent) 0%,
+      transparent 65%
+    ),
+    var(--color-midnight);
+}
+
+/* 4. Accent glow — the strongest "expensive" signal. One or two per page. */
+@utility atmos-glow {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--color-lime);
+  opacity: 0.14;
+  filter: blur(90px);
+  pointer-events: none;
+}
+
+@utility atmos-glow-live {
+  background: var(--color-live);
+  opacity: 0.12;
+}
+
+/* 5. Grain — the cheapest, most reliable way to kill flat default-dark-mode. */
+@utility atmos-grain {
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ─── The live dot ────────────────────────────────────────────────────────────
+   Models a broadcast tally light. Means live, and only live. Always paired
+   with the word "LIVE" in markup — color is never the only signal.
+   ───────────────────────────────────────────────────────────────────────────*/
+
+@utility live-dot {
   display: inline-block;
   width: 7px;
   height: 7px;
-  background: var(--color-tally);
-  border-radius: 50%; /* the one intentional circle: it models a light, not a corner */
-  animation: tally-pulse 1.6s ease-in-out infinite;
+  background: var(--color-live);
+  border-radius: 50%; /* the one intentional circle: it models a light */
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-live) 70%, transparent);
+  animation: live-pulse 1.8s ease-out infinite;
 }
 
-@keyframes tally-pulse {
-  0%,
-  100% {
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-live) 60%, transparent);
     opacity: 1;
   }
-  50% {
-    opacity: 0.35;
+  70% {
+    box-shadow: 0 0 0 7px transparent;
+    opacity: 0.75;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    opacity: 1;
   }
 }
 
-/* Respected everywhere, including the landing page's running-clock moment. */
+/* Section reveal — at most once per section, never on data. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility rise {
+  animation: rise-in 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ─── Reduced motion ──────────────────────────────────────────────────────────
+   Everything stops. Parallax freezes, tickers hold, glow goes static — but a
+   reduced-motion user must still be able to tell what is live, so the dot keeps
+   its color and the LIVE word is always present in markup.
+   ───────────────────────────────────────────────────────────────────────────*/
+
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   *,
   *::before,
   *::after {

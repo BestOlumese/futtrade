@@ -56,7 +56,7 @@ function ResetPasswordForm() {
         footer={
           <Link
             href="/sign-in"
-            className="text-floodlight/55 underline-offset-4 hover:text-signal hover:underline"
+            className="text-floodlight/55 underline-offset-4 hover:text-lime hover:underline"
           >
             Back to sign in
           </Link>
@@ -75,7 +75,7 @@ function ResetPasswordForm() {
       footer={
         <Link
           href="/sign-in"
-          className="text-floodlight/55 underline-offset-4 hover:text-signal hover:underline"
+          className="text-floodlight/55 underline-offset-4 hover:text-lime hover:underline"
         >
           Back to sign in
         </Link>

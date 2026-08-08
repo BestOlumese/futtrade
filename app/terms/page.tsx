@@ -16,7 +16,7 @@ export default function TermsPage() {
   return (
     <div className="mx-auto flex min-h-screen max-w-3xl flex-col gap-16 px-6 py-16">
       <main className="flex flex-col gap-6">
-        <p className="eyebrow text-floodlight/45">Empire Live</p>
+        <p className="label text-floodlight/45">Empire Live</p>
         <h1 className="display-lg text-floodlight">Terms of play</h1>
         <p className="max-w-xl font-sans text-base leading-relaxed text-floodlight/60">
           Not written yet. Empire Live is in development and not open to
@@ -29,7 +29,7 @@ export default function TermsPage() {
         </p>
         <Link
           href="/"
-          className="font-sans text-sm text-signal underline-offset-4 hover:underline"
+          className="font-sans text-sm text-lime underline-offset-4 hover:underline"
         >
           Back to the landing page
         </Link>

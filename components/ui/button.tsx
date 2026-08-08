@@ -2,18 +2,33 @@ import Link from "next/link";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 /**
- * Primary action. `signal` fill, `void` text, full-width within its panel,
- * sharp corners. `signal` carries almost all interactivity in the system —
- * `tally` is never used for a generic CTA.
+ * Actions. A single cut on the bottom-right, never bracketed.
+ * `lime` fill with `midnight` text is the correct pairing — never the reverse,
+ * and `live` red is only ever used for destructive actions.
  */
+
+const base =
+  "cut-btn inline-flex items-center justify-center gap-2 px-6 py-3 font-sans text-sm font-semibold transition-all duration-instant disabled:cursor-not-allowed disabled:opacity-40";
+
+const variants = {
+  primary:
+    "bg-lime text-midnight hover:brightness-110 hover:shadow-[0_0_28px_-4px_var(--color-lime)]",
+  secondary:
+    "border border-steel/50 text-floodlight hover:border-lime/70 hover:text-lime",
+  ghost: "text-floodlight/60 hover:text-lime",
+} as const;
+
+type Variant = keyof typeof variants;
+
 export function Button({
   children,
+  variant = "primary",
   className = "",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
   return (
     <button
-      className={`w-full bg-signal px-4 py-2.5 font-sans text-sm font-semibold text-void transition-opacity duration-instant hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-45 ${className}`}
+      className={`${base} ${variants[variant]} ${className}`}
       {...props}
     >
       {children}
@@ -21,30 +36,19 @@ export function Button({
   );
 }
 
-/**
- * Same treatment as Button, for navigation rather than an action.
- * `secondary` keeps `signal` as the accent but drops the fill — `tally` is
- * never used to differentiate a CTA, only liveness.
- */
 export function ButtonLink({
   href,
   children,
   variant = "primary",
+  className = "",
 }: {
   href: string;
   children: ReactNode;
-  variant?: "primary" | "secondary";
+  variant?: Variant;
+  className?: string;
 }) {
-  const styles =
-    variant === "primary"
-      ? "bg-signal text-void hover:opacity-85"
-      : "border border-steel/60 text-floodlight hover:border-signal hover:text-signal";
-
   return (
-    <Link
-      href={href}
-      className={`inline-flex items-center justify-center px-6 py-3 font-sans text-sm font-semibold transition-colors duration-instant ${styles}`}
-    >
+    <Link href={href} className={`${base} ${variants[variant]} ${className}`}>
       {children}
     </Link>
   );

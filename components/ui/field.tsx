@@ -1,9 +1,8 @@
 import type { InputHTMLAttributes } from "react";
 
 /**
- * Form input. Sharp corners — the chamfer is reserved for panels, never applied
- * to inputs or buttons. `steel` border, `signal` focus ring (the focus ring is
- * global, in globals.css).
+ * Form input. Plain rectangle — cuts are for containers and actions, not for
+ * every element. `surface-2` fill, `steel` border, `lime` focus ring.
  */
 export function Field({
   label,
@@ -13,15 +12,12 @@ export function Field({
 }: { label: string; hint?: string } & InputHTMLAttributes<HTMLInputElement>) {
   return (
     <div className="flex flex-col gap-2">
-      <label
-        htmlFor={id}
-        className="font-sans text-xs font-medium tracking-wide text-floodlight/70 uppercase"
-      >
+      <label htmlFor={id} className="label text-mute">
         {label}
       </label>
       <input
         id={id}
-        className="border border-steel/60 bg-void px-3 py-2.5 font-sans text-sm text-floodlight placeholder:text-floodlight/35"
+        className="border border-steel/40 bg-surface-2 px-3.5 py-3 font-sans text-sm text-floodlight transition-colors duration-instant placeholder:text-floodlight/30 hover:border-steel/70"
         {...props}
       />
       {hint ? (

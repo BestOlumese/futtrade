@@ -54,7 +54,7 @@ export default function SignUpPage() {
       footer={
         <Link
           href="/sign-in"
-          className="text-floodlight/55 underline-offset-4 hover:text-signal hover:underline"
+          className="text-floodlight/55 underline-offset-4 hover:text-lime hover:underline"
         >
           Already have an account? Sign in
         </Link>
@@ -101,7 +101,7 @@ export default function SignUpPage() {
           Creating an account means you accept the{" "}
           <Link
             href="/terms"
-            className="text-floodlight/70 underline underline-offset-4 hover:text-signal"
+            className="text-floodlight/70 underline underline-offset-4 hover:text-lime"
           >
             terms of play
           </Link>

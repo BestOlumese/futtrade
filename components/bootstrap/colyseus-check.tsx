@@ -29,7 +29,6 @@ export function ColyseusCheck({ endpoint }: { endpoint: string }) {
     try {
       const client = new Client(endpoint);
       const room = await client.joinOrCreate("bootstrap");
-
       const sentAt = performance.now();
 
       const reply = await new Promise<{ serverTime: number; roomId: string }>(
@@ -50,7 +49,7 @@ export function ColyseusCheck({ endpoint }: { endpoint: string }) {
       );
 
       setRoundTrip(Math.round(performance.now() - sentAt));
-      setDetail(`Room ${reply.roomId}`);
+      setDetail(reply.roomId);
       setStatus("ok");
       await room.leave();
     } catch (error) {
@@ -60,45 +59,48 @@ export function ColyseusCheck({ endpoint }: { endpoint: string }) {
   }, [endpoint]);
 
   return (
-    <Panel>
-      <div className="flex flex-col gap-4 p-6">
-        <div className="flex flex-col gap-1">
-          <h2 className="display-sm text-floodlight">
-            Colyseus
-          </h2>
-          <p className="numeric text-xs break-all text-floodlight/45">
-            {endpoint}
-          </p>
-        </div>
+    <Panel bodyClassName="p-5 flex flex-col gap-3">
+      <h2 className="display-md text-floodlight">Colyseus</h2>
+      <p className="numeric text-xs break-all text-mute">{endpoint}</p>
 
-        <p className="font-sans text-sm text-floodlight/70">
-          {status === "idle" && "Not yet checked."}
-          {status === "connecting" &&
-            "Connecting… first attempt can take ~50s if the server is waking."}
-          {status === "ok" && (
-            <span className="text-signal">
-              Connected and message round-tripped.
-            </span>
-          )}
-          {status === "failed" && (
-            <span className="text-tally">Failed. {detail}</span>
-          )}
-        </p>
-
-        {status === "ok" && (
-          <dl className="flex flex-col gap-1 numeric text-sm">
-            <div className="flex justify-between">
-              <dt className="text-floodlight/45">Round trip</dt>
-              <dd className="text-floodlight">{roundTrip} ms</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-floodlight/45">Room</dt>
-              <dd className="text-floodlight">{detail}</dd>
-            </div>
-          </dl>
+      <p className="font-sans text-sm leading-relaxed">
+        {status === "idle" && (
+          <span className="text-floodlight/60">Not yet checked.</span>
         )}
+        {status === "connecting" && (
+          <span className="text-floodlight/60">
+            Connecting… first attempt can take ~50s if the server is waking.
+          </span>
+        )}
+        {status === "ok" && (
+          <span className="text-lime">Connected and message round-tripped.</span>
+        )}
+        {status === "failed" && (
+          <span className="text-live">Failed. {detail}</span>
+        )}
+      </p>
 
-        <Button onClick={runCheck} disabled={status === "connecting"}>
+      {status === "ok" && (
+        <div className="flex flex-col">
+          <div className="flex items-baseline justify-between border-b border-steel/20 py-2">
+            <span className="label text-mute">Round trip</span>
+            <span className="numeric text-xs text-floodlight">
+              {roundTrip} ms
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between py-2">
+            <span className="label text-mute">Room</span>
+            <span className="numeric text-xs text-floodlight">{detail}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-auto pt-1">
+        <Button
+          onClick={runCheck}
+          disabled={status === "connecting"}
+          className="w-full"
+        >
           {status === "connecting" ? "Connecting…" : "Run handshake check"}
         </Button>
       </div>

@@ -38,13 +38,13 @@ export default function SignInPage() {
         <>
           <Link
             href="/forgot-password"
-            className="text-floodlight/55 underline-offset-4 hover:text-signal hover:underline"
+            className="text-floodlight/55 underline-offset-4 hover:text-lime hover:underline"
           >
             Forgot password?
           </Link>
           <Link
             href="/sign-up"
-            className="text-floodlight/55 underline-offset-4 hover:text-signal hover:underline"
+            className="text-floodlight/55 underline-offset-4 hover:text-lime hover:underline"
           >
             Create an account
           </Link>
