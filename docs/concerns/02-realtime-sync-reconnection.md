@@ -2,14 +2,33 @@
 
 **Applies to phases:** 01, 06, 11
 
-## Disconnection mid-match
+## Disconnection mid-match — DECIDED
 
-This needs a defined grace period and a defined consequence, decided explicitly before Phase 01 ships — not discovered in production. Options to choose between:
-- The match pauses until reconnection (bounded by a timeout)
-- An AI takes over the disconnected manager's tactics for the remainder
-- The match continues on the disconnected manager's last-known instructions
+Settled before Phase 01 shipped, as this doc required.
 
-Whichever is chosen, the UI must show a real, decided state (see below) — never a spinner that could mean anything.
+**The match continues on the disconnected manager's last-known instructions.**
+The tick keeps advancing and their last tactics stand. There is a **60-second
+grace period** in which they can rejoin and resync to the current tick; after
+that their slot is released.
+
+Why not the alternatives:
+
+- **Pausing until reconnection** hands a losing manager a freeze button. Anyone
+  behind can stall their opponent's match at will by pulling the plug, and
+  closing that later needs something like a pause budget. A player should never
+  be held hostage by the other's connection.
+- **AI takeover** is Phase 08. Choosing it here would pull that phase's scope
+  backward, which the phase ordering exists to prevent — and there is no
+  simulation yet for an AI to drive. It slots in on top of this decision later:
+  the room already carries on without the absent manager, so Phase 08 only has
+  to change *what* drives their instructions, not *whether* play continues.
+
+**The room also survives being briefly empty.** It keeps ticking for the same
+60 seconds when nobody is connected, so both managers reloading at once doesn't
+destroy the match. Only after that does it dispose.
+
+Whichever the state, the UI must show a real, decided one (see below) — never a
+spinner that could mean anything.
 
 ## Client-side interpolation
 

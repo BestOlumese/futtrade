@@ -12,7 +12,7 @@ import { forceIpv4IfRequested } from "../lib/force-ipv4";
  * first connection after a suspension can time out while it wakes.
  */
 
-forceIpv4IfRequested();
+await forceIpv4IfRequested();
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {

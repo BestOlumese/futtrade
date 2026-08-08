@@ -6,8 +6,8 @@
 - [x] [00 — Bootstrap](00-bootstrap.md) — **complete**, closed 2026-08-08 and verified in production
 
 ## Core live match engine (the highest-risk system — build and validate first)
-- [01 — Tick Loop Skeleton](01-tick-loop-skeleton.md) ← **current**
-- [02 — Minimal Sim + Two Tactical Dials](02-minimal-sim-two-dials.md)
+- [x] [01 — Tick Loop Skeleton](01-tick-loop-skeleton.md) — **complete**, closed 2026-08-08
+- [02 — Minimal Sim + Two Tactical Dials](02-minimal-sim-two-dials.md) ← **current**
 - [03 — Server Validation & Anti-Cheat Guardrails](03-server-validation-guardrails.md)
 - [04 — Event Schema & Persistence](04-event-schema-persistence.md)
 - [05 — Basic 2D Viewer (Post-Match)](05-basic-2d-viewer-postmatch.md)

@@ -1,12 +1,13 @@
-import { forceIpv4IfRequested } from "./lib/force-ipv4";
-
 /**
  * Runs once when the Next.js server process starts.
- * Applies the FORCE_IPV4 guard for local development on hosts with no IPv6
- * route — a no-op unless FORCE_IPV4=1. See lib/force-ipv4.ts.
+ *
+ * The module is imported dynamically inside the runtime check so the Edge
+ * bundle never pulls in node builtins — Next compiles this file for both
+ * runtimes, and Edge has no `node:net`.
  */
-export function register() {
-  if (process.env.NEXT_RUNTIME === "nodejs") {
-    forceIpv4IfRequested();
-  }
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  const { forceIpv4IfRequested } = await import("./lib/force-ipv4");
+  await forceIpv4IfRequested();
 }

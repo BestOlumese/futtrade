@@ -3,6 +3,7 @@ import express from "express";
 import { Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { BootstrapRoom } from "./rooms/BootstrapRoom.js";
+import { MatchRoom } from "./rooms/MatchRoom.js";
 
 const port = Number(process.env.PORT) || 2567;
 
@@ -52,6 +53,7 @@ const gameServer = new Server({
 });
 
 gameServer.define("bootstrap", BootstrapRoom);
+gameServer.define("match", MatchRoom);
 
 gameServer
   .listen(port, host)
