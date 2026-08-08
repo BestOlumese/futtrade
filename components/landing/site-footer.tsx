@@ -8,7 +8,7 @@ export function SiteFooter() {
   return (
     <footer className="flex flex-col gap-6 border-t border-steel/25 pt-8 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-col gap-1">
-        <span className="label text-lime">Empire Live</span>
+        <span className="label text-lime">FUTTRADE</span>
         <span className="font-sans text-xs text-floodlight/35">
           In development. Not open to players yet.
         </span>

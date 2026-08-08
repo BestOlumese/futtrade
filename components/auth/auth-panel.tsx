@@ -28,7 +28,7 @@ export function AuthPanel({
               clipPath: "polygon(0 0, 100% 0, 100% 70%, 70% 100%, 0 100%)",
             }}
           />
-          <span className="label text-lime">Empire Live</span>
+          <span className="label text-lime">FUTTRADE</span>
         </div>
 
         <div className="flex flex-col gap-2.5">

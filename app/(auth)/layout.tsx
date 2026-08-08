@@ -24,7 +24,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           href="/"
           className="relative font-sans text-xs text-floodlight/35 transition-colors duration-instant hover:text-lime"
         >
-          ← Back to Empire Live
+          ← Back to FUTTRADE
         </Link>
       </main>
     </>

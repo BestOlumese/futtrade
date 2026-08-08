@@ -14,7 +14,7 @@
 
 services:
   - type: web
-    name: empire-live-server
+    name: futtrade-server
     runtime: docker
     plan: free
     region: oregon

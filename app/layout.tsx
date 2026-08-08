@@ -27,7 +27,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Empire Live",
+  title: "FUTTRADE",
   description:
     "Manage a football club, play live 1v1 matches, and trade the players who decide them.",
 };

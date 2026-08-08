@@ -1,10 +1,10 @@
-# AGENTS.md — Empire Live
+# AGENTS.md — Futtrade
 
-You are working in the Empire Live codebase. Read this file fully before touching code. It tells you what this project is, how the docs are organized, and the non-negotiables that apply everywhere.
+You are working in the Futtrade codebase. Read this file fully before touching code. It tells you what this project is, how the docs are organized, and the non-negotiables that apply everywhere.
 
 ## What this is
 
-Empire Live is an online football club-management game: tactics + squad/finance management + **live, real-time, matchmade 1v1 matches** with a Fotmox/Sofascore-style 2D match center, sitting on top of an FC-style fantasy player database whose attributes genuinely develop over time — and a two-sided player-share market (the Global Bourse) whose prices move off real match performance, not random noise.
+Futtrade is an online football club-management game: tactics + squad/finance management + **live, real-time, matchmade 1v1 matches** with a Fotmox/Sofascore-style 2D match center, sitting on top of an FC-style fantasy player database whose attributes genuinely develop over time — and a two-sided player-share market (the Global Bourse) whose prices move off real match performance, not random noise.
 
 One event stream (shot/pass/tackle/card/sub, each with location + players + xG/outcome) powers everything downstream: the live 2D viewer, post-match stats, player Form, and market price movement. Get that schema right; treat it as the spine of the whole system.
 
@@ -47,8 +47,8 @@ The original wide-ranging project guide (concept, three-layer CA/Form system, fu
 - **Server-authoritative, always.** The Colyseus room owns match state. Clients render; they never decide outcomes. No exceptions, no "just for the demo."
 - **Event-schema-first.** Before building any new stat, chart, or price mechanic, check whether it can be derived from the existing match-event stream before adding a new data path.
 - **Design tokens, not hardcoded values.** Every color, font, and spacing value in `04-design-system.md` is a token. No raw hex codes or arbitrary Tailwind values in components — if a value isn't a token, that's a sign the design system needs updating, not that you should improvise.
-- **Tabular numerals for anything live.** Scores, prices, clocks, tickers — always `IBM Plex Mono` with `font-variant-numeric: tabular-nums`. Never let live numbers reflow.
-- **The tally dot means live, and only live.** Don't reuse the pulsing red indicator decoratively.
+- **Tabular numerals for anything live.** Scores, prices, clocks, tickers — always `JetBrains Mono` with `font-variant-numeric: tabular-nums`. Never let live numbers reflow.
+- **The live dot means live, and only live.** Don't reuse the pulsing red indicator decoratively.
 - **Hidden values stay hidden server-side.** True Current Ability, potential ceiling, and fogged scouting ranges must never be sent to the client in full — only the derived/fogged view the user is entitled to see.
 
 ## Working style

@@ -1,8 +1,8 @@
 {
-  "name": "empire-live-server",
+  "name": "futtrade-server",
   "version": "0.1.0",
   "private": true,
-  "description": "Empire Live — authoritative Colyseus match server. Deployed separately from the Next.js app; never serverless.",
+  "description": "Futtrade — authoritative Colyseus match server. Deployed separately from the Next.js app; never serverless.",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",

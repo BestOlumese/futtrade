@@ -11,7 +11,7 @@ import { SiteFooter } from "@/components/landing/site-footer";
 import { ButtonLink } from "@/components/ui/button";
 
 export const metadata: Metadata = {
-  title: "Empire Live — real matches, real managers, a market that moves",
+  title: "FUTTRADE — real matches, real managers, a market that moves",
   description:
     "Manage a football club, play live 1v1 matches against real managers, and trade player shares on a market that moves because of what happened on the pitch.",
 };

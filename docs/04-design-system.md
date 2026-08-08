@@ -1,10 +1,10 @@
 # Design System — "Floodlight Protocol"
 
-Single source of truth for every visual decision in Empire Live. No raw hex codes, arbitrary sizes, or one-off spacing in component code — if a value isn't a token here, this doc needs updating, not the component.
+Single source of truth for every visual decision in Futtrade. No raw hex codes, arbitrary sizes, or one-off spacing in component code — if a value isn't a token here, this doc needs updating, not the component.
 
 ## Design thesis
 
-Empire Live is a **competitive game first** and a management tool second. It should feel like booting into a match, not like opening a spreadsheet — closer to Valorant's or EA FC's interface language than to a SaaS dashboard.
+Futtrade is a **competitive game first** and a management tool second. It should feel like booting into a match, not like opening a spreadsheet — closer to Valorant's or EA FC's interface language than to a SaaS dashboard.
 
 Two registers, deliberately different jobs:
 

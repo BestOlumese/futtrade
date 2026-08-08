@@ -1,4 +1,4 @@
-# Empire Live
+# Futtrade
 
 An online football club-management game: tactics and squad management, live
 matchmade 1v1 matches with a 2D match center, and a two-sided player-share

@@ -11,7 +11,7 @@ export function SiteHeader() {
             className="h-4 w-4 bg-lime"
             style={{ clipPath: "polygon(0 0, 100% 0, 100% 70%, 70% 100%, 0 100%)" }}
           />
-          <span className="label text-floodlight">Empire Live</span>
+          <span className="label text-floodlight">FUTTRADE</span>
         </Link>
 
         <nav className="flex items-center gap-6">

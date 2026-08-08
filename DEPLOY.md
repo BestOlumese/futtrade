@@ -25,9 +25,9 @@ All four services below have a free tier that needs **no credit card**.
 ## 1. Push to GitHub
 
 ```bash
-gh repo create empire-live --private --source=. --push
+gh repo create futtrade --private --source=. --push
 # or: create the repo in the browser, then
-#   git remote add origin git@github.com:<you>/empire-live.git
+#   git remote add origin git@github.com:<you>/futtrade.git
 #   git push -u origin main
 ```
 
@@ -44,7 +44,7 @@ git status --porcelain | grep -c '\.env$'   # must print 0
 Do this **before** Vercel, because the app needs the server's URL.
 
 1. Render dashboard → **New** → **Blueprint**, and point it at the repo.
-   It reads [`render.yaml`](render.yaml) and creates the `empire-live-server`
+   It reads [`render.yaml`](render.yaml) and creates the `futtrade-server`
    Docker service.
 2. Wait for the first build. Check the logs for `[colyseus] listening on 0.0.0.0:<port>`.
 3. Confirm health:
@@ -92,7 +92,7 @@ a pointless constraint.
 ## 4. Close the loop between them
 
 Back in Render, set `ALLOWED_ORIGINS` to your Vercel URL
-(e.g. `https://empire-live.vercel.app`, no trailing slash) and redeploy.
+(e.g. `https://futtrade.vercel.app`, no trailing slash) and redeploy.
 
 Colyseus reserves a seat over plain HTTP before upgrading the socket, so the
 browser enforces CORS on that first request. Without this, the handshake fails
