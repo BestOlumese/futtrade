@@ -4,7 +4,7 @@ import { Panel } from "@/components/ui/panel";
 import { LiveBadge } from "@/components/ui/live-badge";
 import { SectionHeading } from "./section-heading";
 import { useDemoClock } from "@/lib/demo/clock";
-import { matchStateAt, HOME, AWAY } from "@/lib/demo/timeline";
+import { matchStateAt, HOME, AWAY, GOAL } from "@/lib/demo/timeline";
 
 /**
  * Section 2 — the strongest proof the product is real.
@@ -28,6 +28,56 @@ const SHOT_COLOUR: Record<string, string> = {
   blocked: "var(--color-steel)",
   off: "var(--color-steel)",
 };
+
+/**
+ * A goal, seen from above: a shallow box behind the goal line with the two
+ * posts marked and the net hatched. Geometry comes from GOAL in the timeline,
+ * which is also what shots are aimed at.
+ */
+function GoalFrame({ end, flash }: { end: "left" | "right"; flash: boolean }) {
+  const right = end === "right";
+  const lineX = right ? GOAL.lineRight : GOAL.lineLeft;
+  const backX = right ? GOAL.backRight : GOAL.backLeft;
+  const left = Math.min(lineX, backX);
+  const width = Math.abs(backX - lineX);
+
+  return (
+    <div
+      aria-hidden="true"
+      className="absolute"
+      style={{
+        left: `${left}%`,
+        width: `${width}%`,
+        top: `${GOAL.yTop}%`,
+        height: `${GOAL.yBottom - GOAL.yTop}%`,
+      }}
+    >
+      {/* Net */}
+      <div
+        className="absolute inset-0 transition-opacity duration-300"
+        style={{
+          opacity: flash ? 0.55 : 0.16,
+          backgroundImage:
+            "repeating-linear-gradient(45deg, var(--color-floodlight) 0 1px, transparent 1px 5px)",
+        }}
+      />
+      {/* Back of the net */}
+      <div
+        className="absolute inset-y-0 w-px bg-floodlight/45"
+        style={right ? { right: 0 } : { left: 0 }}
+      />
+      {/* The two posts, on the goal line */}
+      <div
+        className={`absolute h-0.75 w-full ${flash ? "bg-lime" : "bg-floodlight/80"} transition-colors duration-300`}
+        style={{ top: 0 }}
+      />
+      <div
+        className={`absolute h-0.75 w-full ${flash ? "bg-lime" : "bg-floodlight/80"} transition-colors duration-300`}
+        style={{ bottom: 0 }}
+      />
+    </div>
+  );
+}
 
 export function MatchCenter() {
   const { t, ref } = useDemoClock<HTMLElement>();
@@ -100,13 +150,12 @@ export function MatchCenter() {
                 </span>
               </div>
 
-              {/* Net flash on the goal */}
-              <div
-                aria-hidden="true"
-                className={`absolute top-1/2 right-0 h-[42%] w-[6%] -translate-y-1/2 bg-lime transition-opacity duration-300 ${
-                  state.netFlash ? "opacity-60" : "opacity-0"
-                }`}
-              />
+              {/* Goal frames. Drawn from the same GOAL constants the shots are
+                  aimed at, so a finish can never land beside a post that's
+                  drawn somewhere else. Seen from above, so a goal is a shallow
+                  box behind the line rather than posts and a crossbar. */}
+              <GoalFrame end="right" flash={state.netFlash} />
+              <GoalFrame end="left" flash={false} />
 
               {/* Shot line, with its xG. Drawn in SVG so it can be a real line. */}
               {state.shotLine && (
@@ -229,11 +278,29 @@ export function MatchCenter() {
                   </span>
                   <span className="truncate font-sans text-[11px] text-floodlight/50">
                     {state.goalBadge.note}
+                    {state.goalBadge.placement
+                      ? ` · ${state.goalBadge.placement}`
+                      : ""}
                   </span>
                   <span className="numeric shrink-0 text-[11px] text-floodlight/60">
                     {state.goalBadge.minute} · {state.goalBadge.score}
                   </span>
                 </div>
+              )}
+
+              {/* Set-piece tag beside the spot, so the pause explains itself */}
+              {state.setPiece && (
+                <span
+                  aria-hidden="true"
+                  className="label absolute -translate-x-1/2 -translate-y-1/2 border border-lime/50 bg-midnight/85 px-1.5 py-1 text-lime backdrop-blur-sm"
+                  style={{
+                    left: `${state.setPiece.spot.x}%`,
+                    top: `${state.setPiece.spot.y - 9}%`,
+                    opacity: state.setPiece.staged,
+                  }}
+                >
+                  {state.setPiece.label}
+                </span>
               )}
             </div>
 
@@ -276,7 +343,7 @@ export function MatchCenter() {
 
               <div className="flex justify-between">
                 <span className="numeric text-[10px] text-mute">64&apos;</span>
-                <span className="numeric text-[10px] text-mute">79&apos;</span>
+                <span className="numeric text-[10px] text-mute">87&apos;</span>
               </div>
             </div>
           </div>
@@ -294,17 +361,26 @@ export function MatchCenter() {
                   <span className="numeric w-8 shrink-0 text-xs text-mute">
                     {event.minute}
                   </span>
-                  <span
-                    className={`label w-12 shrink-0 ${
-                      event.type === "Goal"
-                        ? "text-lime"
-                        : event.type === "Card"
-                          ? "text-live"
-                          : "text-mute"
-                    }`}
-                  >
-                    {event.type}
-                  </span>
+                  {/* A booking gets a chip in the card's own colour, and the
+                      detail spells out "Yellow card" — so the row reads
+                      correctly whether or not you register the colour. */}
+                  {event.card ? (
+                    <span
+                      className={`label w-12 shrink-0 px-1 text-center text-midnight ${
+                        event.card === "yellow" ? "bg-card-yellow" : "bg-live"
+                      }`}
+                    >
+                      {event.card === "yellow" ? "Yel" : "Red"}
+                    </span>
+                  ) : (
+                    <span
+                      className={`label w-12 shrink-0 ${
+                        event.type === "Goal" ? "text-lime" : "text-mute"
+                      }`}
+                    >
+                      {event.type}
+                    </span>
+                  )}
                   <span className="min-w-0 flex-1 truncate font-sans text-xs text-floodlight/75">
                     {event.detail}
                   </span>
