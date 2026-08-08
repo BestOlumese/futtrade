@@ -31,6 +31,7 @@ Midnight blue base, electric lime as the single action color. The base is **blue
 | `live` | `#FF3B30` | **Liveness and loss.** The live dot, LIVE badges, negative deltas, destructive actions. |
 | `steel` | `#4A5A72` | **Borders and dividers only.** 2.8:1 on `midnight` — it fails WCAG AA and must never be used for text. |
 | `mute` | `#7D8BA3` | Secondary and label text. 5.3:1 on `surface`, so it clears AA. Use this wherever `steel` is tempting for words. |
+| `card-yellow` | `#F5C518` | A booking, and nothing else. Not a brand colour — it's the colour of a real object, the way a red card is `live` red. Never use it as an accent or a warning state. |
 
 **The rule that keeps this from going generic:** `lime` and `live` never do the same job. `lime` means *go, act, gain*. `live` means *happening now, or losing*. A red button that isn't destructive is wrong; a lime "LIVE" badge is wrong.
 

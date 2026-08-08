@@ -20,6 +20,9 @@
   --color-steel: #4a5a72;
   /* Secondary/label text. 5.3:1 on `surface`, so it clears AA. */
   --color-mute: #7d8ba3;
+  /* A booking. Not part of the brand palette — it's the colour of a real
+     object, like the red of a red card, and is used for nothing else. */
+  --color-card-yellow: #f5c518;
 
   /* Type */
   --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;

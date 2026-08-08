@@ -2,71 +2,162 @@
  * The landing page's scripted match — a single event stream that drives every
  * animated surface on the page.
  *
- * This mirrors the real architecture on purpose. AGENTS.md: "One event stream
- * powers everything downstream: the live 2D viewer, post-match stats, player
- * Form and market price movement." The demo works the same way, so a goal at
- * 72' moves the scoreline, the xG, the momentum timeline AND the share price
- * because they are all derived from the same event.
+ * Mirrors the real architecture on purpose. AGENTS.md: "One event stream powers
+ * everything downstream: the live 2D viewer, post-match stats, player Form and
+ * market price movement."
  *
- * Direction of causation matters here. Possession is the script; the ball's
- * position is *derived from whoever is holding it*, not from a path of its own.
- * That is what makes a pass actually arrive at a player's feet — an earlier
- * version moved the ball along hardcoded coordinates and it floated through
- * empty space, because nothing tied it to the players.
+ * Two structural decisions worth knowing before editing:
  *
- * `matchStateAt` is a pure function of elapsed loop time, so:
- *   - server and client render identically (no hydration mismatch)
- *   - a section scrolled back into view is instantly in sync, not restarted
- *   - the loop is seamless, because state at LOOP_MS equals state at 0
+ * 1. POSSESSION DRIVES THE BALL, never the reverse. The script names who holds
+ *    it and the ball's position is derived from that player's live position, so
+ *    a pass always leaves a player and always arrives at one.
+ *
+ * 2. REAL TIME AND PLAY TIME ARE DIFFERENT CLOCKS. The passage contains a card
+ *    stoppage, a slow-motion goal replay and a walk-back to kickoff, so play
+ *    time freezes or crawls while the loop's real time keeps advancing.
+ *    `playClockAt` is the mapping between them. The match clock, possession and
+ *    player movement all read play time; phases and event scheduling read real
+ *    time.
+ *
+ * `matchStateAt` is pure, so server and client render identically, a section
+ * scrolled back into view is instantly in sync, and state at LOOP_MS equals
+ * state at 0 — the loop closes on the kickoff, which is why the restart reads
+ * as intentional rather than as a glitch.
  *
  * None of this is real data, and it is deliberately not wired to a live match:
- * the landing page has to work for a first-time visitor when nothing is live.
+ * the landing page has to work when nothing is in progress.
  */
 
 export const LOOP_MS = 72_000;
 
-/** Match seconds elapsed per real second — the passage is time-compressed. */
+/** Match seconds per second of PLAY time (stoppages excluded). */
 const MATCH_SPEED = 12;
-
-/** Kickoff offset for the passage we replay: 64:12. */
 const MATCH_START_SECOND = 64 * 60 + 12;
 
 export const HOME = { name: "Kestrel FC", short: "KES" };
 export const AWAY = { name: "Ardor SC", short: "ARD" };
-
-/** The player whose shares the Bourse section tracks. */
 export const TRACKED_PLAYER = "A. Delane";
 
+/* ── Phase schedule, in real loop ms ─────────────────────────────────────── */
+
+const T_KICKOFF_END = 3_000; // ball on the centre spot, teams in shape
+const T_CARD = 40_000; // card shown, play stops
+const T_CARD_END = 42_000;
+const T_GOAL = 56_000; // the climax
+const T_SLOWMO_END = 59_000; // heavy slow-motion hold
+const T_WALKBACK_END = 66_000; // players return to shape, ball to centre
+// T_WALKBACK_END → LOOP_MS: set for kickoff. Identical to t=0, so the loop closes.
+
+export type Phase = "kickoff" | "play" | "stoppage" | "slowmo" | "walkback" | "set";
+
+export function phaseAt(t: number): Phase {
+  if (t < T_KICKOFF_END) return "kickoff";
+  if (t < T_CARD) return "play";
+  if (t < T_CARD_END) return "stoppage";
+  if (t < T_GOAL) return "play";
+  if (t < T_SLOWMO_END) return "slowmo";
+  if (t < T_WALKBACK_END) return "walkback";
+  return "set";
+}
+
+/** Heavy slow-motion: play crawls to a near-freeze on the goal. */
+const SLOWMO_RATE = 0.1;
+
+const PLAY_BEFORE_CARD = T_CARD - T_KICKOFF_END;
+const PLAY_TOTAL = PLAY_BEFORE_CARD + (T_GOAL - T_CARD_END);
+
+/** Real loop time → play time. Frozen during stoppage, crawling in slow-mo. */
+export function playClockAt(t: number): number {
+  if (t <= T_KICKOFF_END) return 0;
+  if (t <= T_CARD) return t - T_KICKOFF_END;
+  if (t <= T_CARD_END) return PLAY_BEFORE_CARD;
+  if (t <= T_GOAL) return PLAY_BEFORE_CARD + (t - T_CARD_END);
+  if (t <= T_SLOWMO_END) return PLAY_TOTAL + (t - T_GOAL) * SLOWMO_RATE;
+  return PLAY_TOTAL + (T_SLOWMO_END - T_GOAL) * SLOWMO_RATE;
+}
+
+/**
+ * How "in play" the shape is. 0 means settled into base formation for kickoff,
+ * 1 means full match movement. Ramps in after kickoff and out during walk-back,
+ * which is what stops the reset from snapping.
+ */
+const SETTLE_RAMP_START = 1_500;
+const SETTLE_RAMP_END = 4_500;
+
+function settleAt(t: number): number {
+  // Ramp in after the kickoff whistle…
+  if (t < SETTLE_RAMP_START) return 0;
+  if (t < SETTLE_RAMP_END) {
+    return (t - SETTLE_RAMP_START) / (SETTLE_RAMP_END - SETTLE_RAMP_START);
+  }
+  if (t < T_SLOWMO_END) return 1;
+  // …and back out as the players walk into shape for the restart.
+  if (t < T_WALKBACK_END) {
+    return 1 - (t - T_SLOWMO_END) / (T_WALKBACK_END - T_SLOWMO_END);
+  }
+  return 0;
+}
+
+/** Movement energy. Play stops for a card and nearly stops in slow-motion. */
+function livenessAt(t: number): number {
+  const phase = phaseAt(t);
+  if (phase === "stoppage") return 0.12;
+  if (phase === "slowmo") return 0.06;
+  if (phase === "walkback") return 0.5;
+  return 1;
+}
+
+/* ── Events ──────────────────────────────────────────────────────────────── */
+
 export type EventType = "Shot" | "Save" | "Goal" | "Card" | "Sub" | "Tackle";
+export type ShotOutcome = "goal" | "saved" | "blocked" | "off";
+export type Team = "home" | "away";
 
 export type MatchEvent = {
+  /** Real loop ms. */
   at: number;
   type: EventType;
   detail: string;
   xg?: number;
   isShot?: boolean;
   priceStep?: number;
-  /** Momentum impulse, positive = home. */
   impulse?: number;
   scores?: boolean;
+  /** Who struck it — drives where the shot line is drawn from. */
+  shooter?: { team: Team; idx: number };
+  outcome?: ShotOutcome;
+  card?: "yellow" | "red";
+  cardOn?: { team: Team; idx: number };
 };
 
 export const EVENTS: MatchEvent[] = [
   { at: 6_000, type: "Tackle", detail: "Marek wins it back", impulse: 14 },
-  { at: 13_000, type: "Shot", detail: "Orsi · blocked", xg: 0.09, isShot: true, priceStep: 0.02, impulse: 22 },
-  { at: 21_000, type: "Save", detail: "Voss · low to the right", xg: 0.31, isShot: true, priceStep: 0.05, impulse: -18 },
-  { at: 30_000, type: "Sub", detail: "Renn on for Kavan", impulse: 6 },
-  { at: 40_000, type: "Goal", detail: `${TRACKED_PLAYER} · left foot`, xg: 0.44, isShot: true, priceStep: 0.27, impulse: 48, scores: true },
-  { at: 52_000, type: "Card", detail: "Ardor SC · dissent", impulse: 10 },
-  { at: 60_000, type: "Shot", detail: `${TRACKED_PLAYER} · over`, xg: 0.12, isShot: true, priceStep: 0.04, impulse: 18 },
-  { at: 67_000, type: "Tackle", detail: "Delane dispossessed", impulse: -14 },
+  {
+    at: 13_000, type: "Shot", detail: "Orsi · blocked", xg: 0.09, isShot: true,
+    priceStep: 0.02, impulse: 22, shooter: { team: "home", idx: 8 }, outcome: "blocked",
+  },
+  {
+    at: 22_000, type: "Save", detail: "Voss · low to the right", xg: 0.31, isShot: true,
+    priceStep: 0.05, impulse: -18, shooter: { team: "away", idx: 9 }, outcome: "saved",
+  },
+  { at: 31_000, type: "Sub", detail: "Renn on for Kavan", impulse: 6 },
+  {
+    at: T_CARD, type: "Card", detail: "Ardor SC · dissent", impulse: 10,
+    card: "yellow", cardOn: { team: "away", idx: 5 },
+  },
+  {
+    at: 48_000, type: "Shot", detail: `${TRACKED_PLAYER} · over`, xg: 0.12, isShot: true,
+    priceStep: 0.04, impulse: 18, shooter: { team: "home", idx: 9 }, outcome: "off",
+  },
+  {
+    at: T_GOAL, type: "Goal", detail: `${TRACKED_PLAYER} · left foot`, xg: 0.44,
+    isShot: true, priceStep: 0.27, impulse: 48, scores: true,
+    shooter: { team: "home", idx: 9 }, outcome: "goal",
+  },
 ];
 
-/**
- * Formations. Index 0 is the keeper. Home attacks right, away attacks left.
- * These are *base* positions — the live positions add a team block shift plus a
- * small per-player drift.
- */
+/* ── Formations and per-player character ─────────────────────────────────── */
+
 const HOME_SHAPE: [number, number][] = [
   [6, 50],
   [19, 18], [19, 40], [19, 60], [19, 82],
@@ -81,146 +172,180 @@ const AWAY_SHAPE: [number, number][] = [
   [45, 24], [45, 50], [45, 76],
 ];
 
-export type Team = "home" | "away";
+type Role = "GK" | "CB" | "FB" | "CM" | "WING" | "ST";
 
-/**
- * The possession chain: who has the ball, and when they got it.
- * Ordered by `at`. The final entry returns possession to the same player who
- * holds it at t=0, so the loop closes without a visible jump.
- */
-const POSSESSION: { at: number; team: Team; idx: number }[] = [
-  { at: 0, team: "home", idx: 6 },
-  { at: 2_500, team: "home", idx: 2 },
-  { at: 4_500, team: "away", idx: 8 },
-  { at: 6_000, team: "home", idx: 6 },
-  { at: 9_000, team: "home", idx: 5 },
-  { at: 11_500, team: "home", idx: 8 },
-  { at: 13_000, team: "home", idx: 10 },
-  { at: 14_500, team: "away", idx: 2 },
-  { at: 17_000, team: "away", idx: 6 },
-  { at: 19_500, team: "away", idx: 9 },
-  { at: 21_000, team: "home", idx: 0 },
-  { at: 23_500, team: "home", idx: 3 },
-  { at: 26_500, team: "home", idx: 7 },
-  { at: 30_000, team: "home", idx: 5 },
-  { at: 33_000, team: "home", idx: 6 },
-  { at: 36_000, team: "home", idx: 9 },
-  { at: 38_000, team: "home", idx: 8 },
-  { at: 40_000, team: "home", idx: 10 },
-  { at: 41_500, team: "away", idx: 0 },
-  { at: 44_000, team: "away", idx: 6 },
-  { at: 47_000, team: "home", idx: 6 },
-  { at: 50_000, team: "home", idx: 5 },
-  { at: 52_500, team: "home", idx: 7 },
-  { at: 55_000, team: "home", idx: 8 },
-  { at: 58_000, team: "home", idx: 9 },
-  { at: 60_000, team: "home", idx: 10 },
-  { at: 62_000, team: "away", idx: 0 },
-  { at: 65_000, team: "away", idx: 6 },
-  { at: 67_000, team: "away", idx: 5 },
-  { at: 69_500, team: "away", idx: 2 },
-  { at: LOOP_MS, team: "home", idx: 6 },
+const ROLES: Role[] = [
+  "GK", "FB", "CB", "CB", "FB", "CM", "CM", "CM", "WING", "ST", "WING",
 ];
 
-/** How long the ball is in flight at the end of each possession segment. */
-const PASS_FLIGHT_MS = 600;
+/**
+ * Per-role movement envelope. This is what stops the pitch looking like a wave:
+ * a keeper patrols a few percent of his line while a winger covers a quarter of
+ * the pitch, and they do it at different speeds.
+ */
+const ROLE_MOTION: Record<
+  Role,
+  { ax: number; ay: number; freq: number; burst: number; shift: number }
+> = {
+  GK: { ax: 1.1, ay: 2.6, freq: 0.22, burst: 0, shift: 0.15 },
+  CB: { ax: 2.6, ay: 2.2, freq: 0.38, burst: 0, shift: 0.75 },
+  FB: { ax: 4.8, ay: 5.8, freq: 0.5, burst: 2.5, shift: 1.05 },
+  CM: { ax: 5.4, ay: 5.0, freq: 0.6, burst: 1, shift: 1 },
+  WING: { ax: 7.8, ay: 4.2, freq: 0.72, burst: 4.5, shift: 1.15 },
+  ST: { ax: 6.2, ay: 6.6, freq: 0.85, burst: 4, shift: 1.1 },
+};
 
-const BASE_PRICE = 4.82;
+/** Deterministic 0..1 from a player index and a salt — no RNG, no hydration risk. */
+function hash(i: number, salt: number): number {
+  const x = Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
+/** Each player gets his own speed, amplitude and two unrelated rhythms. */
+function character(team: Team, i: number) {
+  const salt = team === "home" ? 0 : 7;
+  return {
+    speed: 0.72 + hash(i, salt + 1) * 0.66,
+    amp: 0.82 + hash(i, salt + 2) * 0.45,
+    phase1: hash(i, salt + 3) * Math.PI * 2,
+    phase2: hash(i, salt + 4) * Math.PI * 2,
+    freq2: 1.55 + hash(i, salt + 5) * 1.0,
+    burstPhase: hash(i, salt + 6) * Math.PI * 2,
+  };
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
 }
 
 function shapeFor(team: Team): [number, number][] {
   return team === "home" ? HOME_SHAPE : AWAY_SHAPE;
 }
 
-/** Index into POSSESSION for time t, and the segment's boundaries. */
-function possessionAt(t: number) {
+/* ── Possession ──────────────────────────────────────────────────────────── */
+
+/** Possession chain over PLAY time (0 … PLAY_TOTAL). */
+const POSSESSION: { at: number; team: Team; idx: number }[] = [
+  { at: 0, team: "home", idx: 6 },
+  { at: 2_000, team: "home", idx: 2 },
+  { at: 4_000, team: "away", idx: 8 },
+  { at: 5_500, team: "home", idx: 6 },
+  { at: 8_000, team: "home", idx: 5 },
+  { at: 9_500, team: "home", idx: 8 },
+  { at: 11_500, team: "away", idx: 2 },
+  { at: 14_000, team: "away", idx: 6 },
+  { at: 17_000, team: "away", idx: 9 },
+  { at: 19_500, team: "home", idx: 0 },
+  { at: 22_000, team: "home", idx: 3 },
+  { at: 25_000, team: "home", idx: 7 },
+  { at: 28_000, team: "home", idx: 5 },
+  { at: 31_000, team: "home", idx: 6 },
+  { at: 34_000, team: "away", idx: 5 },
+  { at: 37_000, team: "home", idx: 7 },
+  { at: 40_000, team: "home", idx: 6 },
+  { at: 43_000, team: "home", idx: 8 },
+  { at: 45_000, team: "home", idx: 9 },
+  { at: 47_500, team: "home", idx: 10 },
+  { at: 49_500, team: "home", idx: 6 },
+  { at: 51_000, team: "home", idx: 9 },
+  { at: PLAY_TOTAL, team: "home", idx: 9 },
+];
+
+const PASS_FLIGHT_MS = 600;
+
+function possessionAt(playTime: number) {
   let i = 0;
   for (let k = 0; k < POSSESSION.length - 1; k++) {
-    if (POSSESSION[k].at <= t) i = k;
+    if (POSSESSION[k].at <= playTime) i = k;
   }
-  const from = POSSESSION[i];
-  const to = POSSESSION[i + 1] ?? POSSESSION[0];
-  return { from, to, startsAt: from.at, endsAt: to.at };
+  return {
+    from: POSSESSION[i],
+    to: POSSESSION[i + 1] ?? POSSESSION[0],
+    startsAt: POSSESSION[i].at,
+    endsAt: (POSSESSION[i + 1] ?? POSSESSION[0]).at,
+  };
 }
 
-/**
- * The point play is focused on, derived from BASE positions only.
- *
- * Deliberately independent of live player positions: the block shift is
- * computed from this, and the ball is computed from the shifted players, so
- * using live positions here would be circular.
- */
-function focusAt(t: number): { x: number; y: number } {
-  const { from, to, startsAt, endsAt } = possessionAt(t);
+/** Where play is focused, from BASE positions only — the block shift is derived
+ *  from this and the ball is derived from the shifted players, so using live
+ *  positions here would be circular. */
+function focusAt(playTime: number): { x: number; y: number } {
+  const { from, to, startsAt, endsAt } = possessionAt(playTime);
   const a = shapeFor(from.team)[from.idx];
   const b = shapeFor(to.team)[to.idx];
   const span = endsAt - startsAt || 1;
-  const progress = clamp((t - startsAt) / span, 0, 1);
-  // Ease so the focus lingers with the holder rather than sliding constantly.
-  const eased = progress * progress * (3 - 2 * progress);
+  const p = clamp((playTime - startsAt) / span, 0, 1);
+  const eased = p * p * (3 - 2 * p);
   return { x: a[0] + (b[0] - a[0]) * eased, y: a[1] + (b[1] - a[1]) * eased };
 }
 
-/**
- * Live positions: base shape, shifted as a block toward where play is, plus a
- * small per-player wander so nobody is ever perfectly frozen.
- *
- * Keepers barely move — they hold their line rather than following play upfield.
- */
 function playersAt(t: number, team: Team): { x: number; y: number }[] {
-  const focus = focusAt(t);
+  const playTime = playClockAt(t);
+  const settle = settleAt(t);
+  const liveness = livenessAt(t);
+  const focus = focusAt(playTime);
   const shape = shapeFor(team);
-  const seconds = t / 1000;
+  const s = playTime / 1000;
+  const attack = team === "home" ? 1 : -1;
 
-  const shiftX = (focus.x - 50) * (team === "home" ? 0.3 : 0.26);
-  const shiftY = (focus.y - 50) * (team === "home" ? 0.2 : 0.17);
+  const blockX = (focus.x - 50) * (team === "home" ? 0.3 : 0.26) * settle;
+  const blockY = (focus.y - 50) * (team === "home" ? 0.2 : 0.17) * settle;
 
   return shape.map(([bx, by], i) => {
-    const keeper = i === 0;
-    const shiftScale = keeper ? 0.15 : 1;
-    const driftScale = keeper ? 0.5 : 1;
+    const role = ROLES[i];
+    const motion = ROLE_MOTION[role];
+    const c = character(team, i);
+    const energy = settle * liveness * c.amp;
 
-    const driftX = Math.sin(seconds * 0.55 + i * 1.7) * 1.9 * driftScale;
-    const driftY = Math.cos(seconds * 0.47 + i * 2.3) * 2.2 * driftScale;
+    const w1 = s * motion.freq * c.speed;
+    const w2 = s * motion.freq * c.freq2 * c.speed;
+
+    const driftX =
+      (Math.sin(w1 + c.phase1) * 0.68 + Math.sin(w2 + c.phase2) * 0.34) *
+      motion.ax *
+      energy;
+    const driftY =
+      (Math.cos(w1 * 0.93 + c.phase2) * 0.68 +
+        Math.sin(w2 * 1.08 + c.phase1) * 0.32) *
+      motion.ay *
+      energy;
+
+    // Bursts: attackers surge forward then drop off, rather than gliding.
+    const burstWave = Math.sin(s * 0.34 * c.speed + c.burstPhase);
+    const burst =
+      motion.burst * Math.pow(Math.max(0, burstWave), 3) * attack * energy;
 
     return {
-      x: clamp(bx + shiftX * shiftScale + driftX, 2.5, 97.5),
-      y: clamp(by + shiftY * shiftScale + driftY, 4, 96),
+      x: clamp(bx + blockX * motion.shift + driftX + burst, 2.5, 97.5),
+      y: clamp(by + blockY * motion.shift + driftY, 4, 96),
     };
   });
 }
 
-/**
- * The ball sits on whoever is holding it, then flies to the next receiver over
- * the last PASS_FLIGHT_MS of the segment — so it always leaves a player and
- * always arrives at one.
- *
- * Positions come from the same `playersAt` call the renderer uses, which is why
- * the ball lands exactly on a dot rather than near it.
- */
-function ballAt(
-  t: number,
+/* ── Ball ────────────────────────────────────────────────────────────────── */
+
+const CENTRE = { x: 50, y: 50 };
+
+/** Where the goal that was just scored sits, for the ball-in-net position. */
+const GOAL_MOUTH = { x: 98, y: 50 };
+
+function ballFromPossession(
+  playTime: number,
   home: { x: number; y: number }[],
   away: { x: number; y: number }[],
 ): { x: number; y: number; inFlight: boolean } {
-  const { from, to, endsAt } = possessionAt(t);
+  const { from, to, endsAt } = possessionAt(playTime);
   const pick = (team: Team, idx: number) => (team === "home" ? home : away)[idx];
-
   const holder = pick(from.team, from.idx);
   const flightStart = endsAt - PASS_FLIGHT_MS;
 
-  if (t < flightStart) {
+  if (playTime < flightStart) {
     return { x: holder.x, y: holder.y, inFlight: false };
   }
 
   const receiver = pick(to.team, to.idx);
-  const progress = clamp((t - flightStart) / PASS_FLIGHT_MS, 0, 1);
-  // Ease out: the ball leaves quickly and settles into the receiver.
-  const eased = 1 - Math.pow(1 - progress, 2);
-
+  const p = clamp((playTime - flightStart) / PASS_FLIGHT_MS, 0, 1);
+  const eased = 1 - Math.pow(1 - p, 2);
   return {
     x: holder.x + (receiver.x - holder.x) * eased,
     y: holder.y + (receiver.y - holder.y) * eased,
@@ -228,13 +353,50 @@ function ballAt(
   };
 }
 
-function formatClock(matchSecond: number): string {
-  const minutes = Math.floor(matchSecond / 60);
-  const seconds = Math.floor(matchSecond % 60);
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+export function ballAt(t: number): { x: number; y: number; inFlight: boolean } {
+  const phase = phaseAt(t);
+
+  if (phase === "kickoff" || phase === "set") {
+    return { ...CENTRE, inFlight: false };
+  }
+
+  if (phase === "slowmo") {
+    // Struck at T_GOAL and travelling into the net across the slow-motion hold.
+    const shooter = playersAt(T_GOAL, "home")[9];
+    const p = clamp((t - T_GOAL) / (T_SLOWMO_END - T_GOAL), 0, 1);
+    const eased = Math.min(1, p * 2.2);
+    return {
+      x: shooter.x + (GOAL_MOUTH.x - shooter.x) * eased,
+      y: shooter.y + (GOAL_MOUTH.y - shooter.y) * eased,
+      inFlight: eased < 1,
+    };
+  }
+
+  if (phase === "walkback") {
+    const p = clamp((t - T_SLOWMO_END) / (T_WALKBACK_END - T_SLOWMO_END), 0, 1);
+    const eased = p * p * (3 - 2 * p);
+    return {
+      x: GOAL_MOUTH.x + (CENTRE.x - GOAL_MOUTH.x) * eased,
+      y: GOAL_MOUTH.y + (CENTRE.y - GOAL_MOUTH.y) * eased,
+      inFlight: false,
+    };
+  }
+
+  return ballFromPossession(
+    playClockAt(t),
+    playersAt(t, "home"),
+    playersAt(t, "away"),
+  );
 }
 
-/** Deterministic wobble so the price drifts between events without RNG. */
+/* ── Price and momentum ──────────────────────────────────────────────────── */
+
+const BASE_PRICE = 4.82;
+
+function eventsBefore(t: number): MatchEvent[] {
+  return EVENTS.filter((event) => event.at <= t);
+}
+
 function wobble(t: number): number {
   const s = t / 1000;
   return (
@@ -244,26 +406,11 @@ function wobble(t: number): number {
   );
 }
 
-function eventsBefore(t: number): MatchEvent[] {
-  return EVENTS.filter((event) => event.at <= t);
-}
-
 export function priceAt(t: number): number {
-  const stepped = eventsBefore(t).reduce(
-    (total, event) => total + (event.priceStep ?? 0),
-    0,
-  );
+  const stepped = eventsBefore(t).reduce((a, e) => a + (e.priceStep ?? 0), 0);
   return BASE_PRICE + stepped + wobble(t);
 }
 
-/**
- * Momentum is a TIMELINE across the whole passage, not a scrolling window.
- *
- * Bar i covers a fixed slice of the passage. It is only revealed once its slice
- * has been played, so the future reads as empty rather than as invented history
- * — the previous version clamped negative times to zero and so opened with 18
- * identical bars that looked like momentum from before kickoff.
- */
 export const MOMENTUM_BARS = 26;
 const MOMENTUM_SLICE_MS = LOOP_MS / MOMENTUM_BARS;
 
@@ -278,17 +425,23 @@ function momentumAt(t: number): number {
   return clamp(value, -96, 96);
 }
 
-export type MomentumBar = {
-  /** −96..96, positive means home are on top. */
-  value: number;
-  /** False until this slice has been played. */
-  revealed: boolean;
-  /** The slice currently being played. */
-  current: boolean;
+export type MomentumBar = { value: number; revealed: boolean; current: boolean };
+
+/* ── State ───────────────────────────────────────────────────────────────── */
+
+export type ShotLine = {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  outcome: ShotOutcome;
+  xg: number;
+  /** 1 → 0 as the line fades. */
+  strength: number;
 };
 
 export type MatchState = {
-  matchSecond: number;
+  phase: Phase;
   clock: string;
   homeScore: number;
   awayScore: number;
@@ -297,33 +450,76 @@ export type MatchState = {
   passes: number;
   possession: number;
   ball: { x: number; y: number; inFlight: boolean };
+  ballTrail: { x: number; y: number }[];
   homePlayers: { x: number; y: number }[];
   awayPlayers: { x: number; y: number }[];
-  /** Newest first. */
+  holder: { team: Team; idx: number } | null;
   feed: { minute: string; type: EventType; detail: string; xg?: number }[];
   momentum: MomentumBar[];
-  /** Which side is on top right now. */
   momentumLeader: string;
+  shotLine: ShotLine | null;
+  card: { x: number; y: number; colour: "yellow" | "red" } | null;
+  goalBadge: { scorer: string; minute: string; score: string } | null;
+  /** True while the net should flash. */
+  netFlash: boolean;
   price: number;
   priceDelta: number;
   cause: { label: string; minute: string } | null;
   candleIndex: number;
 };
 
+const SHOT_LINE_MS = 1_800;
+const GOAL_BADGE_MS = 8_000;
+
+function minuteAt(t: number): string {
+  const second = MATCH_START_SECOND + (playClockAt(t) / 1000) * MATCH_SPEED;
+  return `${Math.floor(second / 60)}'`;
+}
+
+function formatClock(t: number): string {
+  const second = MATCH_START_SECOND + (playClockAt(t) / 1000) * MATCH_SPEED;
+  const m = Math.floor(second / 60);
+  const s = Math.floor(second % 60);
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+/** Target on the goal line for a shot, so lines converge plausibly. */
+function shotTarget(team: Team, outcome: ShotOutcome): { x: number; y: number } {
+  const x = team === "home" ? 98 : 2;
+  if (outcome === "off") return { x, y: team === "home" ? 26 : 74 };
+  if (outcome === "blocked") return { x: team === "home" ? 74 : 26, y: 44 };
+  return { x, y: 50 };
+}
+
 export const CANDLE_COUNT = 12;
 const CANDLE_MS = LOOP_MS / CANDLE_COUNT;
 
 export function matchStateAt(rawT: number): MatchState {
   const t = ((rawT % LOOP_MS) + LOOP_MS) % LOOP_MS;
-  const matchSecond = MATCH_START_SECOND + (t / 1000) * MATCH_SPEED;
+  const phase = phaseAt(t);
+  const playTime = playClockAt(t);
   const past = eventsBefore(t);
-
-  const minuteOf = (at: number) =>
-    `${Math.floor((MATCH_START_SECOND + (at / 1000) * MATCH_SPEED) / 60)}'`;
 
   const homePlayers = playersAt(t, "home");
   const awayPlayers = playersAt(t, "away");
-  const ball = ballAt(t, homePlayers, awayPlayers);
+  const ball = ballAt(t);
+
+  // Trail sampled from the same pure function, so it can never disagree.
+  const ballTrail =
+    phase === "kickoff" || phase === "set"
+      ? []
+      : [90, 190, 300].map((back) => {
+          const p = ballAt(Math.max(0, t - back));
+          return { x: p.x, y: p.y };
+        });
+
+  const holder =
+    phase === "play" || phase === "stoppage"
+      ? (() => {
+          const { from } = possessionAt(playTime);
+          return { team: from.team, idx: from.idx };
+        })()
+      : null;
 
   const currentSlice = Math.floor(t / MOMENTUM_SLICE_MS);
   const momentum: MomentumBar[] = Array.from(
@@ -335,47 +531,97 @@ export function matchStateAt(rawT: number): MatchState {
     }),
   );
 
+  // Most recent shot, still within its fade window.
+  const recentShot = [...past]
+    .reverse()
+    .find((e) => e.shooter && e.outcome && t - e.at < SHOT_LINE_MS);
+
+  let shotLine: ShotLine | null = null;
+  if (recentShot?.shooter && recentShot.outcome) {
+    const shooters =
+      recentShot.shooter.team === "home"
+        ? playersAt(recentShot.at, "home")
+        : playersAt(recentShot.at, "away");
+    const origin = shooters[recentShot.shooter.idx];
+    const target = shotTarget(recentShot.shooter.team, recentShot.outcome);
+    shotLine = {
+      x1: origin.x,
+      y1: origin.y,
+      x2: target.x,
+      y2: target.y,
+      outcome: recentShot.outcome,
+      xg: recentShot.xg ?? 0,
+      strength: 1 - (t - recentShot.at) / SHOT_LINE_MS,
+    };
+  }
+
+  // The card sits on the offender for the stoppage plus a short beat after.
+  const cardEvent = EVENTS.find((e) => e.card && e.cardOn);
+  let card: MatchState["card"] = null;
+  if (cardEvent?.cardOn && t >= cardEvent.at && t < T_CARD_END + 1_200) {
+    const offenders =
+      cardEvent.cardOn.team === "home" ? homePlayers : awayPlayers;
+    const at = offenders[cardEvent.cardOn.idx];
+    card = { x: at.x, y: at.y, colour: cardEvent.card! };
+  }
+
+  const scoring = past.filter((e) => e.scores).length;
+  const goalEvent = EVENTS.find((e) => e.scores)!;
+  const goalBadge =
+    t >= T_GOAL && t < T_GOAL + GOAL_BADGE_MS
+      ? {
+          scorer: TRACKED_PLAYER,
+          minute: minuteAt(goalEvent.at),
+          score: `${1 + scoring}–1`,
+        }
+      : null;
+
   const price = priceAt(t);
-  const scoring = past.filter((event) => event.scores).length;
-  const lastPriceEvent = [...past].reverse().find((event) => event.priceStep);
+  const lastPriceEvent = [...past].reverse().find((e) => e.priceStep);
   const nowMomentum = momentum[currentSlice]?.value ?? 0;
 
   return {
-    matchSecond,
-    clock: formatClock(matchSecond),
+    phase,
+    clock: formatClock(t),
     homeScore: 1 + scoring,
     awayScore: 1,
-    shots: 11 + past.filter((event) => event.isShot).length,
-    xg: Number(
-      (1.21 + past.reduce((sum, event) => sum + (event.xg ?? 0), 0)).toFixed(2),
-    ),
-    passes: 431 + Math.floor(t / 620),
-    possession: Math.round(58 + Math.sin(t / 9000) * 5),
+    shots: 11 + past.filter((e) => e.isShot).length,
+    xg: Number((1.21 + past.reduce((a, e) => a + (e.xg ?? 0), 0)).toFixed(2)),
+    passes: 431 + Math.floor(playTime / 620),
+    possession: Math.round(58 + Math.sin(playTime / 9000) * 5),
     ball,
+    ballTrail,
     homePlayers,
     awayPlayers,
+    holder,
     feed: [...past]
       .reverse()
       .slice(0, 6)
-      .map((event) => ({
-        minute: minuteOf(event.at),
-        type: event.type,
-        detail: event.detail,
-        xg: event.xg,
+      .map((e) => ({
+        minute: minuteAt(e.at),
+        type: e.type,
+        detail: e.detail,
+        xg: e.xg,
       })),
     momentum,
     momentumLeader: nowMomentum >= 0 ? HOME.name : AWAY.name,
+    shotLine,
+    card,
+    goalBadge,
+    netFlash: t >= T_GOAL && t < T_GOAL + 1_400,
     price,
     priceDelta: price - BASE_PRICE,
     cause: lastPriceEvent
       ? {
           label: `${lastPriceEvent.type} · ${lastPriceEvent.detail}`,
-          minute: minuteOf(lastPriceEvent.at),
+          minute: minuteAt(lastPriceEvent.at),
         }
       : null,
     candleIndex: Math.floor(t / CANDLE_MS),
   };
 }
+
+/* ── Candles ─────────────────────────────────────────────────────────────── */
 
 export type Candle = {
   open: number;
@@ -387,33 +633,22 @@ export type Candle = {
 };
 
 /**
- * Candles for the live intraday chart.
- *
- * Only the rightmost candle moves: it grows as the price does, then closes when
- * its window ends and a new one opens. Past candles are frozen, because in a
- * real market past prices don't change — the point of the section is that the
- * chart is a record, not decoration.
+ * Only the rightmost candle moves: it grows as the price does, then closes and a
+ * new one opens. Past candles are frozen, because in a real market past prices
+ * don't change — the chart is a record, not decoration.
  */
 export function candlesAt(rawT: number): Candle[] {
   const t = ((rawT % LOOP_MS) + LOOP_MS) % LOOP_MS;
   const current = Math.floor(t / CANDLE_MS);
 
   return Array.from({ length: CANDLE_COUNT }, (_, i) => {
+    if (i > current) {
+      return { open: NaN, close: NaN, high: NaN, low: NaN, live: false, spike: false };
+    }
+
     const startMs = i * CANDLE_MS;
     const endMs = (i + 1) * CANDLE_MS;
     const isLive = i === current;
-
-    if (i > current) {
-      return {
-        open: NaN,
-        close: NaN,
-        high: NaN,
-        low: NaN,
-        live: false,
-        spike: false,
-      };
-    }
-
     const open = priceAt(startMs);
     const close = isLive ? priceAt(t) : priceAt(endMs);
 
@@ -430,9 +665,7 @@ export function candlesAt(rawT: number): Candle[] {
       high: Math.max(...samples, open, close),
       low: Math.min(...samples, open, close),
       live: isLive,
-      spike: EVENTS.some(
-        (event) => event.scores && event.at >= startMs && event.at < endMs,
-      ),
+      spike: EVENTS.some((e) => e.scores && e.at >= startMs && e.at < endMs),
     };
   });
 }
