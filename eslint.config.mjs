@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The Colyseus server is a separate package with its own dependencies,
+    // tsconfig and lint run. The Next.js build must not reach into it — Vercel
+    // only installs the root package.json, so server/node_modules doesn't
+    // exist there and every import would fail to resolve.
+    "server/**",
   ]),
 ]);
 

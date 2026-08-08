@@ -1,0 +1,5 @@
+# The Colyseus match server is a separate service deployed to Render, not to
+# Vercel. Vercel only installs the root package.json, so shipping this
+# directory into the build context gains nothing and risks the Next.js build
+# reaching into a package whose dependencies aren't there.
+server
