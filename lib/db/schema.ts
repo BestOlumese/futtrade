@@ -26,6 +26,15 @@ export const user = pgTable("user", {
     .$defaultFn(() => false)
     .notNull(),
   image: text("image"),
+  /**
+   * Added by the Better Auth username plugin. `username` is the normalised
+   * (lower-cased) form and carries the unique constraint, so `Delane` and
+   * `delane` cannot both exist; `display_username` preserves the casing the
+   * player typed. Uniqueness lives in the database rather than in a check
+   * before insert, which would race under concurrent signups.
+   */
+  username: text("username").unique(),
+  displayUsername: text("display_username"),
   createdAt: timestamp("created_at")
     .$defaultFn(() => new Date())
     .notNull(),

@@ -51,32 +51,3 @@ export function AuthPanel({
     </Panel>
   );
 }
-
-/** Errors state what happened and what to do next — no apology register. */
-export function AuthError({ children }: { children: ReactNode }) {
-  return (
-    <p
-      role="alert"
-      className="border-l-2 border-live bg-live/5 px-3 py-2.5 font-sans text-sm text-floodlight"
-    >
-      {children}
-    </p>
-  );
-}
-
-export function AuthLink({
-  href,
-  children,
-}: {
-  href: string;
-  children: ReactNode;
-}) {
-  return (
-    <a
-      href={href}
-      className="text-floodlight/45 transition-colors duration-instant hover:text-lime"
-    >
-      {children}
-    </a>
-  );
-}

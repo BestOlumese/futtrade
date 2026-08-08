@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
-import { AuthPanel, AuthError } from "@/components/auth/auth-panel";
+import { AuthPanel } from "@/components/auth/auth-panel";
+import { notify } from "@/components/ui/toaster";
 import { Field } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 
@@ -14,13 +15,11 @@ import { Button } from "@/components/ui/button";
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setPending(true);
-    setError(null);
 
     const { error: resetError } = await authClient.requestPasswordReset({
       email,
@@ -28,13 +27,17 @@ export default function ForgotPasswordPage() {
     });
 
     if (resetError) {
-      setError(resetError.message ?? "That reset link couldn't be sent.");
+      notify.problem(
+        "Couldn't send that link",
+        resetError.message ?? "Try again in a moment.",
+      );
       setPending(false);
       return;
     }
 
     setSent(true);
     setPending(false);
+    notify.ok("Reset link sent", `Check ${email}.`);
   }
 
   if (sent) {
@@ -85,8 +88,6 @@ export default function ForgotPasswordPage() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-
-        {error ? <AuthError>{error}</AuthError> : null}
 
         <Button type="submit" disabled={pending}>
           {pending ? "Sending link…" : "Send reset link"}

@@ -4,8 +4,9 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
-import { AuthPanel, AuthError } from "@/components/auth/auth-panel";
-import { Field } from "@/components/ui/field";
+import { AuthPanel } from "@/components/auth/auth-panel";
+import { notify } from "@/components/ui/toaster";
+import { PasswordField } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -18,19 +19,17 @@ function ResetPasswordForm() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
 
     if (password !== confirm) {
-      setError("Those two passwords don't match.");
+      notify.problem("Those two passwords don't match");
       return;
     }
 
     setPending(true);
-    setError(null);
 
     const { error: resetError } = await authClient.resetPassword({
       newPassword: password,
@@ -38,11 +37,15 @@ function ResetPasswordForm() {
     });
 
     if (resetError) {
-      setError(resetError.message ?? "That password couldn't be set.");
+      notify.problem(
+        "That password couldn't be set",
+        resetError.message ?? "The link may have expired.",
+      );
       setPending(false);
       return;
     }
 
+    notify.ok("Password updated", "Sign in with your new password.");
     router.push("/sign-in");
   }
 
@@ -82,10 +85,9 @@ function ResetPasswordForm() {
       }
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-        <Field
+        <PasswordField
           id="password"
           label="New password"
-          type="password"
           autoComplete="new-password"
           required
           minLength={8}
@@ -93,18 +95,15 @@ function ResetPasswordForm() {
           onChange={(e) => setPassword(e.target.value)}
           hint="At least 8 characters."
         />
-        <Field
+        <PasswordField
           id="confirm"
           label="Confirm new password"
-          type="password"
           autoComplete="new-password"
           required
           minLength={8}
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
         />
-
-        {error ? <AuthError>{error}</AuthError> : null}
 
         <Button type="submit" disabled={pending}>
           {pending ? "Setting password…" : "Set password"}

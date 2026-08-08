@@ -15,6 +15,13 @@
       "when": 1786143647089,
       "tag": "0001_enable_timescaledb",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786205779884,
+      "tag": "0002_add_username",
+      "breakpoints": true
     }
   ]
 }

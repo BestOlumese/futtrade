@@ -83,6 +83,22 @@ Set these environment variables **before** the first deploy:
 | `BETTER_AUTH_SECRET` | **Generate a new one** — do not reuse the local value |
 | `BETTER_AUTH_URL` | `https://<your-app>.vercel.app` |
 | `NEXT_PUBLIC_COLYSEUS_URL` | `wss://<your-service>.onrender.com` — **`wss`**, not `ws` |
+| `GMAIL_USER` | the Gmail address sending verification and reset mail |
+| `GMAIL_APP_PASSWORD` | a Google **App Password**, not the account password |
+
+### Mail
+
+Gmail SMTP needs 2-Step Verification enabled and an App Password generated at
+<https://myaccount.google.com/apppasswords>. Paste it without spaces.
+
+If these are unset the app still runs: verification and reset links are written
+to the server log instead of sent, with a warning. That keeps local development
+working without credentials — but in production it means **nobody can ever
+verify their account**, because sign-in is blocked until they do.
+
+Gmail caps sending at roughly 500/day and its deliverability for transactional
+mail is poor; messages often land in spam. This is a bootstrap compromise. Only
+`lib/mail.ts` needs to change to move to a transactional provider.
 
 Generate a fresh secret:
 
