@@ -1,10 +1,14 @@
 import { createServer } from "node:http";
+import { forceIpv4IfRequested } from "./force-ipv4.js";
 import express from "express";
 import { Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { BootstrapRoom } from "./rooms/BootstrapRoom.js";
 import { MatchRoom } from "./rooms/MatchRoom.js";
 import { secretFingerprint } from "./match-ticket.js";
+
+// Before anything opens a socket — notably the Neon write path.
+await forceIpv4IfRequested();
 
 const port = Number(process.env.PORT) || 2567;
 

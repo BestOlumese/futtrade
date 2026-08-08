@@ -32,7 +32,13 @@ export async function POST() {
         "Manager",
     });
 
-    return NextResponse.json({ ticket, expiresIn: TICKET_TTL_SECONDS });
+    // userId is returned so the client can tell which slot is its own. It is
+    // not a credential — the ticket is.
+    return NextResponse.json({
+      ticket,
+      userId: session.user.id,
+      expiresIn: TICKET_TTL_SECONDS,
+    });
   } catch (error) {
     // A missing shared secret is a deployment fault, not a user error — say so
     // rather than returning a confusing 401.

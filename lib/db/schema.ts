@@ -1,6 +1,8 @@
 import {
   boolean,
+  integer,
   pgTable,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -87,4 +89,42 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at").$defaultFn(() => new Date()),
 });
 
-export const schema = { user, session, account, verification };
+/**
+ * Phase 02 — the minimal match record.
+ *
+ * Deliberately just the result. The match EVENT STREAM is Phase 04, and
+ * AGENTS.md calls that schema the spine of the whole system — inventing it
+ * early here, one column at a time, is exactly how it would end up wrong.
+ * Everything below is derivable from the event stream once that exists.
+ *
+ * User ids are nullable because a slot can be unfilled: a manager may play a
+ * match alone against fixed default dials.
+ */
+export const match = pgTable("match", {
+  id: text("id").primaryKey(),
+  roomId: text("room_id").notNull(),
+
+  homeUserId: text("home_user_id").references(() => user.id, { onDelete: "set null" }),
+  awayUserId: text("away_user_id").references(() => user.id, { onDelete: "set null" }),
+
+  homeScore: integer("home_score").notNull(),
+  awayScore: integer("away_score").notNull(),
+  homeShots: integer("home_shots").notNull(),
+  awayShots: integer("away_shots").notNull(),
+  homeXg: real("home_xg").notNull(),
+  awayXg: real("away_xg").notNull(),
+  homePossession: integer("home_possession").notNull(),
+
+  // The dials each side finished on. Enough to analyse the exit criterion
+  // against real played matches, not only simulated ones.
+  homeMentality: text("home_mentality").notNull(),
+  homePressing: text("home_pressing").notNull(),
+  awayMentality: text("away_mentality").notNull(),
+  awayPressing: text("away_pressing").notNull(),
+
+  finishedAt: timestamp("finished_at")
+    .$defaultFn(() => new Date())
+    .notNull(),
+});
+
+export const schema = { user, session, account, verification, match };

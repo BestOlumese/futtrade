@@ -12,8 +12,6 @@ import { forceIpv4IfRequested } from "../lib/force-ipv4";
  * first connection after a suspension can time out while it wakes.
  */
 
-await forceIpv4IfRequested();
-
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
   console.error("DATABASE_URL is not set. Fill it in .env — see DEPLOY.md.");
@@ -23,6 +21,11 @@ if (!connectionString) {
 const ATTEMPTS = 3;
 
 async function run(): Promise<void> {
+  // Inside the async function, not at module scope: tsx compiles this to CJS
+  // (the root package is not "type": "module"), where top-level await is a
+  // hard error.
+  await forceIpv4IfRequested();
+
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
     const pool = new Pool({ connectionString });
     try {

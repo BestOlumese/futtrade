@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { Atmosphere } from "@/components/atmosphere/atmosphere";
 import { Panel } from "@/components/ui/panel";
 import { ButtonLink } from "@/components/ui/button";
-import { TickRoom } from "@/components/match/tick-room";
+import { MatchRoomPanel } from "@/components/match/match-room";
 
 export const dynamic = "force-dynamic";
 
@@ -33,16 +33,17 @@ export default async function MatchPage() {
 
       <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-16">
         <header className="flex flex-col gap-3">
-          <span className="label text-lime">Phase 01</span>
+          <span className="label text-lime">Phase 02</span>
           <h1 className="display-xl text-floodlight">Match room</h1>
           <p className="max-w-xl font-sans text-sm leading-relaxed text-floodlight/50">
-            Two managers, one authoritative tick. No simulation yet — this proves
-            the loop itself before anything is built on top of it.
+            Two managers, two dials, ninety minutes in ninety seconds. The
+            server owns the clock and the score; your dials are intent it
+            chooses to honour.
           </p>
         </header>
 
         {session?.user ? (
-          <TickRoom />
+          <MatchRoomPanel />
         ) : (
           <Panel bodyClassName="p-6 flex flex-col gap-4">
             <h2 className="display-md text-floodlight">Sign in to join</h2>
