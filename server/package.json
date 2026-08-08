@@ -8,7 +8,8 @@
     "dev": "tsx watch --env-file-if-exists=../.env src/index.ts",
     "build": "tsc",
     "start": "node build/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sim:tune": "tsx src/sim/tune.ts"
   },
   "dependencies": {
     "@colyseus/schema": "^3.0.76",
