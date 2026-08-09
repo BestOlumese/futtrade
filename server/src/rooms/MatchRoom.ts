@@ -1,6 +1,7 @@
 import { Room, ServerError, type Client } from "colyseus";
 import { Schema, MapSchema, type } from "@colyseus/schema";
-import { verifyTicket } from "../match-ticket.js";
+import { spendTicket, verifyTicket } from "../match-ticket.js";
+import { AbuseTracker, audit } from "../audit.js";
 import {
   DEFAULT_DIALS,
   isMentality,
@@ -95,12 +96,20 @@ export class MatchRoom extends Room<MatchState> {
   private rng = makeRng((Math.random() * 2 ** 32) >>> 0);
   private lastChangeAt = new Map<string, number>();
   private persisted = false;
+  private abuse = new AbuseTracker();
 
   static async onAuth(token: string, options: JoinOptions): Promise<AuthContext> {
     const ticket = options?.ticket ?? token;
     if (!ticket) throw new ServerError(401, "Sign in to join a match.");
     try {
       const claims = await verifyTicket(ticket);
+      // Single use. A captured ticket is otherwise replayable for its whole
+      // 60-second life, which would let someone take a seat beside the manager
+      // whose session minted it.
+      if (!spendTicket(claims.jti)) {
+        console.warn("[match] rejected join: ticket already used");
+        throw new ServerError(401, "That sign-in link was already used.");
+      }
       return { userId: claims.userId, username: claims.username || "Manager" };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
@@ -114,6 +123,7 @@ export class MatchRoom extends Room<MatchState> {
 
   onCreate() {
     this.state = new MatchState();
+    this.hardenMessageDispatch();
 
     this.onMessage("kickoff", (client) => this.handleKickoff(client));
     this.onMessage("rematch", (client) => this.handleRematch(client));
@@ -121,10 +131,107 @@ export class MatchRoom extends Room<MatchState> {
       this.handleDials(client, message),
     );
 
+    /**
+     * Anything else. Colyseus silently drops unhandled types, which is safe but
+     * invisible — a client probing for a `setScore` handler would get no
+     * response and leave no trace. Phase 03 requires attempts to be logged, so
+     * every unknown type is refused loudly and recorded.
+     *
+     * There is deliberately no handler that accepts an outcome. Clients send
+     * intent; the room decides what happened.
+     */
+    this.onMessage("*", (client, type, message: unknown) => {
+      this.refuse(
+        client,
+        String(type),
+        "Unknown message type. Clients send intent, never outcomes.",
+        message,
+      );
+    });
+
     console.log(`[match] room ${this.roomId} created`);
   }
 
+  /**
+   * Closes a denial-of-service hole in Colyseus 0.16's message dispatch.
+   *
+   * Handlers are stored in a PLAIN object, so a message whose type is
+   * `__proto__` resolves to `Object.prototype` — truthy, so the "*" catch-all
+   * is skipped — and dispatch then calls `.callback(...)` on it, which is
+   * undefined. The resulting TypeError is uncaught inside the websocket
+   * receiver and takes the whole process down, ending every live match on the
+   * server. `constructor`, `toString`, `valueOf` and any other Object.prototype
+   * key do the same.
+   *
+   * Any authenticated client could do this with one message. Found by
+   * src/attack.ts, which is the entire reason that script exists.
+   *
+   * The fix is to give the registry a null prototype, so those keys resolve to
+   * undefined and fall through to the catch-all like any other unknown type.
+   * Existing internal handlers are carried over rather than dropped.
+   */
+  private hardenMessageDispatch() {
+    const registry = this as unknown as {
+      onMessageHandlers: Record<string, unknown>;
+    };
+    const safe = Object.create(null) as Record<string, unknown>;
+    Object.assign(safe, registry.onMessageHandlers);
+    registry.onMessageHandlers = safe;
+
+    // Defence in depth: a throw inside any handler is contained and audited
+    // rather than escaping into the transport.
+    this.onUncaughtException = (error, methodName) => {
+      audit({
+        room: this.roomId,
+        type: `exception:${methodName}`,
+        accepted: false,
+        reason: String(error).slice(0, 200),
+        tick: this.state?.tick,
+      });
+    };
+  }
+
   /* ── Dials ────────────────────────────────────────────────────────────── */
+
+  /**
+   * Records a refusal, tells the client why, and escalates on repetition.
+   * Escalation never touches the match — a kicked client's last dials stand,
+   * exactly as for an ordinary disconnect.
+   */
+  private refuse(client: Client, type: string, reason: string, payload?: unknown) {
+    const slot = this.slotFor(client);
+    audit({
+      room: this.roomId,
+      userId: slot?.userId ?? null,
+      username: slot?.username ?? null,
+      type,
+      accepted: false,
+      reason,
+      payload,
+      tick: this.state.tick,
+    });
+
+    client.send("rejected", { type, reason });
+
+    const key = slot?.userId ?? client.sessionId;
+    const level = this.abuse.record(key);
+    if (level === "warn") {
+      client.send("warning", {
+        reason: "Too many refused messages. Slow down.",
+      });
+    } else if (level === "kick") {
+      audit({
+        room: this.roomId,
+        userId: slot?.userId ?? null,
+        username: slot?.username ?? null,
+        type: "abuse",
+        accepted: false,
+        reason: "Disconnected after repeated refused messages.",
+        tick: this.state.tick,
+      });
+      client.leave(4001, "Too many refused messages.");
+    }
+  }
 
   private slotFor(client: Client): PlayerSlot | undefined {
     const userId = (client.userData as { userId?: string } | undefined)?.userId;
@@ -144,7 +251,7 @@ export class MatchRoom extends Room<MatchState> {
     const pressing = String(body?.pressing ?? "");
 
     if (!isMentality(mentality) || !isPressing(pressing)) {
-      client.send("dialsRejected", { reason: "Unknown dial setting." });
+      this.refuse(client, "dials", "Unknown dial setting.", message);
       return;
     }
 
@@ -156,7 +263,7 @@ export class MatchRoom extends Room<MatchState> {
     }
 
     if (this.state.phase !== "live") {
-      client.send("dialsRejected", { reason: "The match has finished." });
+      this.refuse(client, "dials", "The match has finished.", message);
       return;
     }
 
@@ -167,15 +274,17 @@ export class MatchRoom extends Room<MatchState> {
     if (now - last < MIN_MS_BETWEEN_CHANGES) {
       // Rate limit is separate from the budget: a client spamming the socket is
       // rejected here even when it has changes left. Logged, per the fairness doc.
-      console.warn(`[match] rate-limited dial change from ${slot.username}`);
-      client.send("dialsRejected", { reason: "Too quickly. Wait a moment." });
+      this.refuse(client, "dials", "Rate limited: too quickly.", message);
       return;
     }
 
     if (slot.changesUsed >= CHANGES_PER_HALF) {
-      client.send("dialsRejected", {
-        reason: `No changes left this half (${CHANGES_PER_HALF} per half).`,
-      });
+      this.refuse(
+        client,
+        "dials",
+        `No changes left this half (${CHANGES_PER_HALF} per half).`,
+        message,
+      );
       return;
     }
 
@@ -183,6 +292,13 @@ export class MatchRoom extends Room<MatchState> {
     slot.pressing = pressing;
     slot.changesUsed += 1;
     this.lastChangeAt.set(slot.userId, now);
+
+    audit({
+      room: this.roomId, userId: slot.userId, username: slot.username,
+      type: "dials", accepted: true,
+      reason: `${mentality}/${pressing} (${slot.changesUsed}/${CHANGES_PER_HALF})`,
+      tick: this.state.tick,
+    });
   }
 
   private dialsFor(side: "home" | "away"): Dials {
@@ -352,6 +468,7 @@ export class MatchRoom extends Room<MatchState> {
     slot.connected = false;
 
     if (consented) {
+      this.abuse.forget(slot.userId);
       console.log(`[match] ${slot.username} left deliberately at tick ${this.state.tick}`);
       this.state.players.delete(slot.userId);
       this.scheduleDisposalIfEmpty();

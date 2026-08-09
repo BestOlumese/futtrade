@@ -122,7 +122,7 @@ export function MatchRoomPanel() {
     readState(state);
 
     room.onStateChange((s) => readState(s as unknown as Record<string, unknown>));
-    room.onMessage("dialsRejected", (m: { reason?: string }) => {
+    room.onMessage("rejected", (m: { reason?: string }) => {
       notify.problem("Change refused", m.reason ?? "The server rejected it.");
     });
     room.onLeave(() => {

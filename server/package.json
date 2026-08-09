@@ -9,13 +9,15 @@
     "build": "tsc",
     "start": "node build/index.js",
     "typecheck": "tsc --noEmit",
-    "sim:tune": "tsx src/sim/tune.ts"
+    "sim:tune": "tsx src/sim/tune.ts",
+    "attack": "tsx src/attack.ts"
   },
   "dependencies": {
     "@colyseus/schema": "^3.0.76",
     "@colyseus/ws-transport": "^0.16.0",
     "@neondatabase/serverless": "^1.1.0",
     "colyseus": "^0.16.0",
+    "colyseus.js": "^0.16.22",
     "drizzle-orm": "^0.45.2",
     "express": "^5.0.0",
     "jose": "^6.2.8"

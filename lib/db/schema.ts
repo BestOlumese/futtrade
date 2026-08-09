@@ -127,4 +127,35 @@ export const match = pgTable("match", {
     .notNull(),
 });
 
-export const schema = { user, session, account, verification, match };
+/**
+ * Phase 03 — the audit trail for rejected client messages.
+ *
+ * Only rejections land here. Accepted messages are logged as structured JSON to
+ * stdout instead: one row per dial change per match is reasonable, one per tick
+ * is not, and a table nobody can afford to read is not an audit trail.
+ *
+ * The payload is stored as text rather than jsonb deliberately — it is hostile
+ * input by definition, and the point is to preserve exactly what arrived, not
+ * to make it queryable as structured data.
+ */
+export const matchAudit = pgTable("match_audit", {
+  id: text("id").primaryKey(),
+  roomId: text("room_id").notNull(),
+  userId: text("user_id"),
+  messageType: text("message_type").notNull(),
+  reason: text("reason").notNull(),
+  /** Truncated — an attacker controls the length. */
+  payload: text("payload"),
+  at: timestamp("at")
+    .$defaultFn(() => new Date())
+    .notNull(),
+});
+
+export const schema = {
+  user,
+  session,
+  account,
+  verification,
+  match,
+  matchAudit,
+};

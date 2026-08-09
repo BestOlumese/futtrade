@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 
 /**
@@ -57,6 +57,10 @@ function secret(): Uint8Array {
 export async function signTicket(claims: TicketClaims): Promise<string> {
   return new SignJWT({ username: claims.username })
     .setProtectedHeader({ alg: "HS256" })
+    // A unique id so the match server can spend the ticket on first use and
+    // refuse a replay. Without it, a captured ticket is usable repeatedly for
+    // its whole lifetime.
+    .setJti(randomUUID())
     .setSubject(claims.userId)
     .setIssuer(ISSUER)
     .setAudience(AUDIENCE)

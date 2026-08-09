@@ -19,6 +19,8 @@ const AUDIENCE = "futtrade-match";
 export type TicketClaims = {
   userId: string;
   username: string;
+  /** Unique per ticket, so a replay can be refused. */
+  jti: string;
 };
 
 /**
@@ -53,8 +55,31 @@ export async function verifyTicket(token: string): Promise<TicketClaims> {
 
   if (!payload.sub) throw new Error("ticket has no subject");
 
+  if (!payload.jti) throw new Error("ticket has no id");
+
   return {
     userId: payload.sub,
     username: typeof payload.username === "string" ? payload.username : "",
+    jti: payload.jti,
   };
+}
+
+/**
+ * Tickets already spent, held only as long as one could still be valid.
+ *
+ * In memory by design: a ticket lives 60 seconds, so a restart losing the set
+ * widens the replay window by at most that, and the alternative — a shared
+ * store — is a dependency the match server does not otherwise need. Revisit if
+ * the server is ever run as more than one instance, since the set is per
+ * process.
+ */
+const spent = new Map<string, number>();
+const SPENT_TTL_MS = 120_000;
+
+export function spendTicket(jti: string): boolean {
+  const now = Date.now();
+  for (const [id, at] of spent) if (now - at > SPENT_TTL_MS) spent.delete(id);
+  if (spent.has(jti)) return false;
+  spent.set(jti, now);
+  return true;
 }
