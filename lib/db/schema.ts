@@ -188,6 +188,24 @@ export const matchEvent = pgTable(
     /** Shots only. The chance quality the sim actually rolled against. */
     xg: real("xg"),
 
+    /**
+     * Shots only — where the ball's flight ENDED, so a shot map can draw the
+     * trajectory rather than only the origin. `end_x`/`end_y` are pitch
+     * coordinates on the same 0–100 scale as `x`/`y`; `end_z` is height in
+     * metres, which is the only way an over-the-bar miss is distinguishable
+     * from one that beat the keeper.
+     *
+     * Stored rather than derived in the renderer: a line has to point
+     * somewhere, and inventing that in a component would mean the page drew
+     * detail no data supported. See docs/features/03-event-stream.md.
+     *
+     * Null on shots recorded before this existed. Those cannot be backfilled —
+     * where the ball went was never observed.
+     */
+    endX: real("end_x"),
+    endY: real("end_y"),
+    endZ: real("end_z"),
+
     /** 1–11. Meaningful today, and unchanged by the arrival of real players. */
     shirt: integer("shirt").notNull(),
     /**

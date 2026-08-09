@@ -50,6 +50,13 @@
       "when": 1786268214580,
       "tag": "0006_backfill_possession",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786270284921,
+      "tag": "0007_little_leo",
+      "breakpoints": true
     }
   ]
 }

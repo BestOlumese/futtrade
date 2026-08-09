@@ -111,6 +111,9 @@ export async function getMatchEvents(matchId: string): Promise<MatchEventRow[]> 
       x: matchEvent.x,
       y: matchEvent.y,
       xg: matchEvent.xg,
+      endX: matchEvent.endX,
+      endY: matchEvent.endY,
+      endZ: matchEvent.endZ,
       shirt: matchEvent.shirt,
       secondaryShirt: matchEvent.secondaryShirt,
     })

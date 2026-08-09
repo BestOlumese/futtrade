@@ -162,7 +162,8 @@ async function main() {
     );
 
     const rows = (await sql`
-      select seq, tick, minute, side, type, outcome, x, y, xg, shirt, secondary_shirt
+      select seq, tick, minute, side, type, outcome, x, y, xg,
+             end_x, end_y, end_z, shirt, secondary_shirt
       from match_event where match_id = ${matchId} order by seq
     `) as Record<string, unknown>[];
 
@@ -171,6 +172,9 @@ async function main() {
       side: r.side as MatchEvent["side"], type: r.type as MatchEvent["type"],
       outcome: String(r.outcome), x: Number(r.x), y: Number(r.y),
       xg: r.xg === null ? null : Number(r.xg),
+      endX: r.end_x === null ? null : Number(r.end_x),
+      endY: r.end_y === null ? null : Number(r.end_y),
+      endZ: r.end_z === null ? null : Number(r.end_z),
       shirt: Number(r.shirt),
       secondaryShirt: r.secondary_shirt === null ? null : Number(r.secondary_shirt),
     }));

@@ -49,27 +49,48 @@ subscribe to anything.
 
 ### Shot map
 
-**One half-pitch, both teams overlaid**, home in `lime` and away in
-`floodlight`. This works because of the coordinate convention in the event
-stream spec: `x` is always measured toward the goal the acting side is
-attacking, so every shot in the log already points the same way. Two teams on
-one goal is the densest possible answer to "who got closer".
+**One team at a time, chosen by a tab.** Both sides were overlaid on a single
+half-pitch at first, which the coordinate convention makes possible — but it was
+wrong in practice: twenty-six shots on one goal is a blob, and colour alone is a
+poor answer to "whose chance was that". The tab group carries each team's name
+and a swatch of the colour its shots are drawn in, `steel`-bordered with a `lime`
+active state, exactly the low-key control this doc specifies for the view toggle.
 
-Encoding, three channels that don't fight each other:
+**Every shot draws its trajectory**, from where it was struck to where it ended:
+
+| outcome | line | dot |
+| --- | --- | --- |
+| goal | solid, full strength, into the goal | solid, with a ring |
+| saved | solid, dimmer, to the goal line | solid |
+| blocked | short dashes, **stops where it was blocked** | hollow |
+| off target | long dashes, past the post — or past the goal line entirely if it cleared the bar | hollow |
+
+The line is what makes the map readable. A dot says where a shot was struck; the
+line says what became of it. It is drawn from `end_x`/`end_y`/`end_z` on the
+event — see [`features/03-event-stream.md`](features/03-event-stream.md) § Shot
+placement — never invented in the component.
+
+A shot over the bar crosses the goal line inside the posts when seen from above,
+so it is carried **past** the line rather than stopped at it. That is the
+top-down way to show height, and it reads `end_z` rather than guessing.
 
 | Channel | Meaning |
 |---|---|
-| **Radius** | xG. A big dot is a big chance — this is the map's entire point |
-| **Fill** | outcome: goal is solid with a ring, saved is solid, off target is hollow, blocked is hollow and dashed |
+| **Line** | what became of the shot, and where it ended |
+| **Radius** | xG — capped at roughly 1.6 m, because the line now carries the outcome |
 | **Colour** | team, and only team |
 
-A goal additionally carries a short label with the scorer's shirt. Colour is
-never the only signal — outcome is carried by fill, so the map survives being
-read by someone who cannot separate lime from white.
+Colour is never the only signal: line style and end point carry the outcome, so
+the map reads without separating lime from white.
 
-Drawn in **SVG, not canvas**: a few dozen dots, crisp at any density, hoverable,
-and themeable with the same tokens as everything else. Phaser is for the moving
-pitch in Phase 06, not for a static plot.
+Drawn in **SVG, not canvas**, and in **metres, not event units** — events store x
+and y both on 0–100, but a pitch is 105 m by 68 m, and plotting the raw units
+stretches the penalty area by half again. The viewBox is padded rather than left
+to `overflow: visible`, so the boundary stroke and an over-the-bar overshoot stay
+inside the picture instead of painting over the layout.
+
+Matches recorded before placement existed draw dots without lines and **say so**.
+They cannot be backfilled: where the ball went was never observed.
 
 ### Stat card
 

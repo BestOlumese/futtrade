@@ -36,6 +36,11 @@ export type MatchEvent = {
   x: number;
   y: number;
   xg: number | null;
+  /** Shots only — where the ball's flight ended. See `shotEnd`. */
+  endX: number | null;
+  endY: number | null;
+  /** Height in metres at that point. Above 2.44 is over the bar. */
+  endZ: number | null;
   shirt: number;
   /** Same side as `shirt` for every type except `tackle`, where it's the opponent. */
   secondaryShirt: number | null;
@@ -193,6 +198,83 @@ export function tackleLocation(
   };
 }
 
+/* ── Shot placement ───────────────────────────────────────────────────────── */
+
+/** The goal is 7.32 m wide and 2.44 m high. In pitch y-units, 7.32 m is 10.76. */
+const GOAL_HALF_Y = 3.66 / (PITCH_Y_M / 100);
+const CROSSBAR_M = 2.44;
+
+/**
+ * Where the ball's flight ended, so a shot map can draw the trajectory.
+ *
+ * DESCRIPTIVE, NEVER CAUSAL. The sim has already decided whether this went in;
+ * this only makes the placement consistent with that decision. It is drawn from
+ * the cosmetic stream for exactly that reason — placement must not be able to
+ * move a scoreline.
+ *
+ * Returned in pitch coordinates on the same 0–100 scale as the shot's own
+ * position, plus a height in metres. Height is what separates a shot that beat
+ * the keeper from one that cleared the bar; without it, an over-the-bar miss
+ * would render as though it should have been a goal.
+ */
+export function shotEnd(
+  fromX: number,
+  fromY: number,
+  quality: number,
+  outcome: string,
+  rng: () => number,
+): { endX: number; endY: number; endZ: number } {
+  // A blocked shot never reaches the goal line. It stops where the defender got
+  // in the way — near the shooter for a close-range block, further out for one
+  // charged down from distance.
+  if (outcome === "blocked") {
+    const travelled = 0.14 + rng() * 0.3;
+    return {
+      endX: fromX + (100 - fromX) * travelled,
+      endY: fromY + (50 - fromY) * travelled,
+      endZ: rng() * 1.1,
+    };
+  }
+
+  if (outcome === "off_target") {
+    // Wide of a post, or over the bar. Roughly two thirds go wide in the real
+    // game, and a wide miss from a tight angle misses by more.
+    if (rng() < 0.66) {
+      const side = rng() < 0.5 ? -1 : 1;
+      const angleFromCentre = Math.abs(fromY - 50) / 50;
+      const past = 0.6 + rng() * (5 + angleFromCentre * 6);
+      return {
+        endX: 100,
+        endY: 50 + side * (GOAL_HALF_Y + past),
+        endZ: rng() * 2.2,
+      };
+    }
+    return {
+      endX: 100,
+      endY: 50 + (rng() * 2 - 1) * GOAL_HALF_Y * 1.2,
+      endZ: CROSSBAR_M + 0.2 + rng() * 2.4,
+    };
+  }
+
+  // On target: a goal or a save. Both cross the line inside the frame.
+  //
+  // A goal is placed nearer the corners and a save nearer the middle, because
+  // that IS the difference between the two — a keeper reaches what is close to
+  // him. The bias is gentle, so central goals and corner saves both still
+  // happen, as they do in the real game.
+  const cornerBias = outcome === "goal" ? 0.45 + 0.55 * quality : 0.15;
+  const spread = rng() ** (1 - cornerBias * 0.75);
+  const side = rng() < 0.5 ? -1 : 1;
+
+  return {
+    endX: 100,
+    endY: 50 + side * spread * GOAL_HALF_Y * 0.94,
+    // Low and hard is the commonest finish; the top corner is rarer than
+    // highlight reels suggest.
+    endZ: Math.min(CROSSBAR_M * 0.95, rng() ** 1.6 * CROSSBAR_M),
+  };
+}
+
 /* ── Clock ────────────────────────────────────────────────────────────────── */
 
 /**
@@ -217,8 +299,11 @@ export function minuteWithinTick(
  * better positions, so they end up on target more often and blocked less.
  */
 export function missOutcome(quality: number, rng: () => number): string {
-  const saved = 0.30 + 0.25 * quality;
-  const blocked = saved + (0.30 - 0.10 * quality);
+  // Calibrated against the real split, which the verifier now reports because
+  // the trajectory lines make it visible: roughly 33% of shots on target, 29%
+  // blocked, 38% wide or over.
+  const saved = 0.24 + 0.25 * quality;
+  const blocked = saved + (0.34 - 0.10 * quality);
   const roll = rng();
   if (roll < saved) return "saved";
   if (roll < blocked) return "blocked";

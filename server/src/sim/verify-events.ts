@@ -37,6 +37,9 @@ function must(condition: boolean, message: string) {
 /** xG is stored as `real` (float32) and rounded on the way in. */
 const near = (a: number, b: number, tolerance = 0.02) => Math.abs(a - b) <= tolerance;
 
+/** Half the goal width, on the pitch's y scale: 3.66 m over 0.68 m per unit. */
+const GOAL_HALF_Y = 3.66 / 0.68;
+
 const VALID_OUTCOMES: Record<string, Set<string>> = {
   shot: new Set(["goal", "saved", "off_target", "blocked"]),
   pass: new Set(["complete", "incomplete"]),
@@ -80,6 +83,35 @@ function checkStructure(events: MatchEvent[], label: string) {
       `${label}: xg on a ${e.type}`,
     );
     if (e.xg !== null) must(e.xg > 0 && e.xg <= 0.95, `${label}: xg ${e.xg}`);
+
+    // Placement belongs to shots and to nothing else, exactly as xG does.
+    const placed = e.endX !== null && e.endY !== null && e.endZ !== null;
+    must(
+      (e.type === "shot") === placed,
+      `${label}: placement on a ${e.type}`,
+    );
+    if (placed) {
+      must(
+        e.endX! >= e.x - 0.5 && e.endX! <= 100.5,
+        `${label}: ball ended at x ${e.endX} having been struck from ${e.x}`,
+      );
+      must(e.endY! >= 0 && e.endY! <= 100, `${label}: end y ${e.endY} off the pitch`);
+      must(e.endZ! >= 0 && e.endZ! <= 6, `${label}: end height ${e.endZ}m`);
+
+      // The outcome and the placement must tell the same story. A "goal" that
+      // ended wide of the post, or a "blocked" that reached the goal line,
+      // would draw a line contradicting its own label.
+      const insideFrame = Math.abs(e.endY! - 50) <= GOAL_HALF_Y && e.endZ! <= 2.44;
+      if (e.outcome === "goal" || e.outcome === "saved") {
+        must(e.endX! >= 99.5, `${label}: ${e.outcome} did not reach the goal line`);
+        must(insideFrame, `${label}: ${e.outcome} ended outside the frame`);
+      } else if (e.outcome === "off_target") {
+        must(e.endX! >= 99.5, `${label}: off_target did not reach the goal line`);
+        must(!insideFrame, `${label}: off_target ended INSIDE the frame`);
+      } else if (e.outcome === "blocked") {
+        must(e.endX! < 99.5, `${label}: blocked shot reached the goal line`);
+      }
+    }
 
     must(e.shirt >= 1 && e.shirt <= 11, `${label}: shirt ${e.shirt}`);
     must(
@@ -164,6 +196,7 @@ async function main() {
   let longest = 0;
   const shotDistances: number[] = [];
   const possessionCheck = { fromEvents: 0, fromSim: 0 };
+  const placement = { goal: 0, saved: 0, wide: 0, over: 0, blocked: 0 };
 
   for (let i = 0; i < RUNS; i++) {
     // Sweep the dial space rather than replaying one setting: a bug in the
@@ -207,6 +240,11 @@ async function main() {
     for (const e of result.events) {
       if (e.type === "shot") {
         totals.shots++;
+        if (e.outcome === "goal") placement.goal++;
+        else if (e.outcome === "saved") placement.saved++;
+        else if (e.outcome === "blocked") placement.blocked++;
+        else if (e.endZ !== null && e.endZ > 2.44) placement.over++;
+        else placement.wide++;
         if (e.outcome === "goal") totals.goals++;
         if (e.secondaryShirt !== null) totals.assisted++;
         // Metres from the centre of the goal, back out of the stored position.
@@ -249,6 +287,15 @@ async function main() {
 
   shotDistances.sort((a, b) => a - b);
   const pick = (q: number) => shotDistances[Math.floor(shotDistances.length * q)].toFixed(1);
+  const onTarget = placement.goal + placement.saved;
+  const pct = (n: number) => ((n / Math.max(totals.shots, 1)) * 100).toFixed(0);
+  console.log("\nWHERE SHOTS ENDED (what the trajectory lines draw)");
+  console.log(
+    `  on target ${pct(onTarget)}%  wide ${pct(placement.wide)}%  ` +
+      `over ${pct(placement.over)}%  blocked ${pct(placement.blocked)}%` +
+      `   real football ~33/26/12/29`,
+  );
+
   console.log("\nSHOT DISTANCE from goal, metres (the shot map's whole point)");
   console.log(`  p10 ${pick(0.1)}   median ${pick(0.5)}   p90 ${pick(0.9)}`);
 
@@ -331,7 +378,8 @@ async function roundTripThroughPostgres() {
     });
 
     const rows = (await sql`
-      select seq, tick, minute, side, type, outcome, x, y, xg, shirt, secondary_shirt
+      select seq, tick, minute, side, type, outcome, x, y, xg,
+             end_x, end_y, end_z, shirt, secondary_shirt
       from match_event where match_id = ${matchId} order by seq
     `) as Record<string, unknown>[];
 
@@ -340,6 +388,9 @@ async function roundTripThroughPostgres() {
       side: r.side as Side, type: r.type as MatchEvent["type"],
       outcome: String(r.outcome), x: Number(r.x), y: Number(r.y),
       xg: r.xg === null ? null : Number(r.xg),
+      endX: r.end_x === null ? null : Number(r.end_x),
+      endY: r.end_y === null ? null : Number(r.end_y),
+      endZ: r.end_z === null ? null : Number(r.end_z),
       shirt: Number(r.shirt),
       secondaryShirt: r.secondary_shirt === null ? null : Number(r.secondary_shirt),
     }));
@@ -358,7 +409,10 @@ async function roundTripThroughPostgres() {
           a.side === b.side && a.type === b.type && a.outcome === b.outcome &&
           a.shirt === b.shirt && a.secondaryShirt === b.secondaryShirt &&
           near(a.x, b.x, 0.01) && near(a.y, b.y, 0.01) &&
-          near(a.xg ?? -1, b.xg ?? -1, 0.001),
+          near(a.xg ?? -1, b.xg ?? -1, 0.001) &&
+          near(a.endX ?? -1, b.endX ?? -1, 0.01) &&
+          near(a.endY ?? -1, b.endY ?? -1, 0.01) &&
+          near(a.endZ ?? -1, b.endZ ?? -1, 0.01),
         `round trip: row ${b.seq} came back different (${JSON.stringify(a)})`,
       );
     }

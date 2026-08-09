@@ -36,6 +36,9 @@ Table `match_event`. One row per event, ordered within a match by `seq`.
 | `x` | real | 0–100, **always toward the acting side's attacking goal** |
 | `y` | real | 0–100, 0 = one touchline, 100 = the other |
 | `xg` | real null | shots only |
+| `end_x` | real null | **shots only** — where the ball's flight ended, 0–100 |
+| `end_y` | real null | shots only — across the pitch, 0–100 |
+| `end_z` | real null | shots only — height in metres at that point |
 | `shirt` | integer | 1–11, the primary actor |
 | `secondary_shirt` | integer null | per type, below |
 | `player_id` | text null | **Phase 10** fills this in. Null until squads exist |
@@ -65,6 +68,38 @@ Both are checked by `npm --prefix server run events:verify`.
 `tackle` is the only type whose secondary player is on the other side. That rule
 is worth remembering rather than re-deriving: a heatmap that attributes a foul to
 the wrong team looks subtly wrong in a way nobody can put their finger on.
+
+### Shot placement, and why it is stored rather than drawn
+
+`end_x`/`end_y`/`end_z` record **where the ball's flight ended**, so a shot map
+can draw the trajectory rather than only the origin:
+
+| outcome | ends at |
+| --- | --- |
+| `goal` | the goal line, inside the frame |
+| `saved` | the goal line, inside the frame — on target, kept out |
+| `off_target` | the goal line, wide of a post or above the bar (`end_z > 2.44`) |
+| `blocked` | **short of the goal**, where the defender got in the way |
+
+This is a deliberate schema addition rather than something the renderer invents.
+A line has to point somewhere, and the three honest choices were: store the
+placement, aim every line at the goal centre, or fabricate it in the component.
+The third would mean the page drew detail no data supported — precisely what the
+event-schema-first rule in AGENTS.md exists to prevent, and two viewers of the
+same match could disagree. The first also gives Phase 22 its goal-mouth view for
+nothing.
+
+Placement is **descriptive, never causal**: the sim has already decided whether
+the shot went in, and the placement is then made consistent with that decision.
+It is drawn from the cosmetic random stream for exactly that reason, so it cannot
+move a scoreline.
+
+The goal is 7.32 m wide and 2.44 m high — 10.76 and 3.59 units on the pitch's y
+scale — so `end_y` between 44.6 and 55.4 is inside the posts.
+
+**Matches recorded before this existed have null placement**, and cannot be
+backfilled: where a shot went was never observed, and deriving it now would be
+inventing it. Their shot maps draw dots without lines, and say so.
 
 ### Coordinates
 

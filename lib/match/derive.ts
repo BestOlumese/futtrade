@@ -34,6 +34,11 @@ export type MatchEventRow = {
   x: number;
   y: number;
   xg: number | null;
+  /** Shots only — where the ball's flight ended. Null before Phase 05. */
+  endX: number | null;
+  endY: number | null;
+  /** Height in metres at that point; above 2.44 cleared the bar. */
+  endZ: number | null;
   shirt: number;
   secondaryShirt: number | null;
 };
@@ -118,6 +123,14 @@ export type Shot = {
   outcome: string;
   shirt: number;
   assist: number | null;
+  /**
+   * Where the ball ended up. Null for matches played before placement was
+   * recorded — those cannot be backfilled, because where the ball went was
+   * never observed. The map draws a dot without a trajectory and says so.
+   */
+  endX: number | null;
+  endY: number | null;
+  endZ: number | null;
 };
 
 export function shotsFrom(events: MatchEventRow[]): Shot[] {
@@ -127,6 +140,7 @@ export function shotsFrom(events: MatchEventRow[]): Shot[] {
       seq: e.seq, side: e.side, minute: e.minute,
       x: e.x, y: e.y, xg: e.xg ?? 0,
       outcome: e.outcome, shirt: e.shirt, assist: e.secondaryShirt,
+      endX: e.endX, endY: e.endY, endZ: e.endZ,
     }));
 }
 

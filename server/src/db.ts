@@ -147,25 +147,30 @@ export async function insertEvents(
   const xs = events.map((e) => Math.round(e.x * 100) / 100);
   const ys = events.map((e) => Math.round(e.y * 100) / 100);
   const xgs = events.map((e) => (e.xg === null ? null : Math.round(e.xg * 10000) / 10000));
+  const round2 = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100);
+  const endXs = events.map((e) => round2(e.endX));
+  const endYs = events.map((e) => round2(e.endY));
+  const endZs = events.map((e) => round2(e.endZ));
   const shirts = events.map((e) => e.shirt);
   const secondary = events.map((e) => e.secondaryShirt);
 
   await sql`
     insert into match_event (
       id, match_id, seq, tick, minute, side, type, outcome,
-      x, y, xg, shirt, secondary_shirt
+      x, y, xg, end_x, end_y, end_z, shirt, secondary_shirt
     )
     select
       u.id, ${matchId}, u.seq, u.tick, u.minute, u.side, u.type, u.outcome,
-      u.x, u.y, u.xg, u.shirt, u.secondary_shirt
+      u.x, u.y, u.xg, u.end_x, u.end_y, u.end_z, u.shirt, u.secondary_shirt
     from unnest(
       ${ids}::text[], ${seqs}::int[], ${ticks}::int[], ${minutes}::int[],
       ${sides}::text[], ${types}::text[], ${outcomes}::text[],
       ${xs}::real[], ${ys}::real[], ${xgs}::real[],
+      ${endXs}::real[], ${endYs}::real[], ${endZs}::real[],
       ${shirts}::int[], ${secondary}::int[]
     ) as u(
       id, seq, tick, minute, side, type, outcome,
-      x, y, xg, shirt, secondary_shirt
+      x, y, xg, end_x, end_y, end_z, shirt, secondary_shirt
     )
   `;
 }

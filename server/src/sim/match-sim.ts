@@ -8,6 +8,7 @@ import {
   assistFor,
   minuteWithinTick,
   missOutcome,
+  shotEnd,
   passLocation,
   pickShirt,
   shotLocation,
@@ -276,16 +277,22 @@ function takeShots(
     const detail = state.detail;
     const where = shotLocation(quality, detail);
     const shooter = pickShirt("shot", detail);
+    const outcome = scored ? "goal" : missOutcome(quality, detail);
+    // Where it ended up. Descriptive only — the goal was decided above.
+    const end = shotEnd(where.x, where.y, quality, outcome, detail);
     out.push({
       seq: 0,
       tick: state.tick + 1,
       minute: minuteWithinTick(state.tick + 1, SIM_MINUTES_PER_TICK, detail),
       side: sideName,
       type: "shot",
-      outcome: scored ? "goal" : missOutcome(quality, detail),
+      outcome,
       x: where.x,
       y: where.y,
       xg: quality,
+      endX: end.endX,
+      endY: end.endY,
+      endZ: end.endZ,
       shirt: shooter,
       secondaryShirt: assistFor(shooter, quality, detail),
     });
@@ -356,7 +363,7 @@ function commitFouls(
     out.push({
       seq: 0, tick: state.tick + 1, minute, side: sideName,
       type: "tackle", outcome: "foul",
-      x: where.x, y: where.y, xg: null,
+      x: where.x, y: where.y, xg: null, endX: null, endY: null, endZ: null,
       shirt: offender, secondaryShirt: pickShirt("pass", detail),
     });
 
@@ -371,7 +378,7 @@ function commitFouls(
       out.push({
         seq: 0, tick: state.tick + 1, minute, side: sideName,
         type: "card", outcome,
-        x: where.x, y: where.y, xg: null,
+        x: where.x, y: where.y, xg: null, endX: null, endY: null, endZ: null,
         shirt: offender, secondaryShirt: null,
       });
 
@@ -423,7 +430,7 @@ function describePlay(
       seq: 0, tick,
       minute: minuteWithinTick(tick, SIM_MINUTES_PER_TICK, detail),
       side: sideName, type: "tackle", outcome: "won",
-      x: where.x, y: where.y, xg: null,
+      x: where.x, y: where.y, xg: null, endX: null, endY: null, endZ: null,
       shirt: pickShirt("tackle", detail), secondaryShirt: pickShirt("pass", detail),
     });
   }
@@ -437,7 +444,7 @@ function describePlay(
       side: sideName, type: "pass",
       // Passes get harder the further up the pitch they are played.
       outcome: detail() < 0.88 - 0.25 * (where.x / 100) ? "complete" : "incomplete",
-      x: where.x, y: where.y, xg: null,
+      x: where.x, y: where.y, xg: null, endX: null, endY: null, endZ: null,
       shirt: passer, secondaryShirt: pickShirt("pass", detail),
     });
   }

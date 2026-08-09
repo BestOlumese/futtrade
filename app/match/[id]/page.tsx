@@ -112,7 +112,7 @@ export default async function MatchSummaryPage({
           <Panel bodyClassName="p-6 flex flex-col gap-5">
             <div className="flex items-baseline justify-between gap-3">
               <h2 className="display-md text-floodlight">Shot map</h2>
-              <span className="label text-mute">Both sides, one goal</span>
+              <span className="label text-mute">Every shot, and where it went</span>
             </div>
             <ShotMap
               shots={shots}

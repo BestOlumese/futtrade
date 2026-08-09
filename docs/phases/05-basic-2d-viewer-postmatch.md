@@ -89,6 +89,39 @@ would have found:
 - The shot map left a large empty rectangle beside it, because the stat card is
   short and the map is tall. The timeline now shares that column.
 
+## The shot map, second time
+
+The first version overlaid both teams on one half-pitch. Shown a real match, it
+was a blob: a 0.40-xG chance drew a **7.4-metre-wide** circle, twenty-six of them
+piled into one penalty area, and colour was doing all the work of telling the
+sides apart.
+
+Rebuilt: **a tab per team**, **a trajectory line on every shot**, and dots capped
+at about a quarter of their previous area. The line is the fix — a dot says where
+a shot was struck, the line says what became of it.
+
+That required a schema change, because the event log stored no end point. The
+three honest options were to store the placement, aim every line at the goal
+centre, or fabricate it in the component. The third would have meant the page
+drawing detail no data supported, which is what the event-schema-first rule
+exists to prevent — so `match_event` gained `end_x`, `end_y` and `end_z`
+([migration 0007](../../drizzle/0007_little_leo.sql)), and Phase 22's goal-mouth
+view now has its source for nothing.
+
+Placement is **descriptive, never causal** — the sim has already decided whether
+the shot went in — so it is drawn from the cosmetic random stream. `sim:tune`
+after the change is byte-identical, which is the proof.
+
+The verifier gained invariants for it: placement belongs to shots and nothing
+else, and the outcome and the placement must tell the same story. A `goal` that
+ended wide of the post, or a `blocked` that reached the goal line, would draw a
+line contradicting its own label. It also now reports the split — **35% on
+target, 23% wide, 12% over, 29% blocked**, against a real 33/26/12/29, which is
+what prompted a small correction to the outcome constants.
+
+Matches played before this draw dots without lines and say so; they cannot be
+backfilled, because where the ball went was never observed.
+
 ## Noted for later
 
 - **The shot map has no genuine tap-in**, and it shows: the chance-quality band
