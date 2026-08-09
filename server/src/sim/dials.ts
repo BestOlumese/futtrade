@@ -77,6 +77,24 @@ type PressingEffect = {
   concedeQuality: number;
   /** Slight drag on your own chance quality when sitting off. */
   shotQuality: number;
+  /**
+   * Multiplier on how often you commit a foul, and so on cards — Phase 04.
+   * Also drives tackle volume, since a tackle and a foul are the same act with
+   * different luck.
+   *
+   * A third cost of pressing, but a small one, and it is worth being honest
+   * about the size. Measured over 40,000 matches, low → high pressing is:
+   *
+   *   fouls    9.60 → 12.85     yellows  1.48 → 1.97     reds  0.055 → 0.098
+   *
+   * So the red-card risk nearly doubles, which sounds dramatic, and amounts to
+   * one extra dismissal roughly every twenty-four matches, which does not. It
+   * is a texture on the pressing decision, not the thing that decides it — the
+   * real cost of pressing high remains `concedeQuality`. Anyone tempted to make
+   * cards matter more should raise this deliberately and re-run `sim:tune`,
+   * rather than assume the effect is already large.
+   */
+  fouls: number;
 };
 
 export const PRESSING_EFFECT: Record<Pressing, PressingEffect> = {
@@ -84,15 +102,18 @@ export const PRESSING_EFFECT: Record<Pressing, PressingEffect> = {
     possession: 0.88,
     concedeQuality: 0.86,
     shotQuality: 0.94,
+    fouls: 0.82,
   },
   medium: {
     possession: 1,
     concedeQuality: 1,
     shotQuality: 1,
+    fouls: 1,
   },
   high: {
     possession: 1.16,
     concedeQuality: 1.22,
     shotQuality: 1.04,
+    fouls: 1.26,
   },
 };

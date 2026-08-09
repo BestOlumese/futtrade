@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Room, ServerError, type Client } from "colyseus";
 import { Schema, MapSchema, type } from "@colyseus/schema";
 import { spendTicket, verifyTicket } from "../match-ticket.js";
@@ -16,14 +17,20 @@ import {
   TICKS_PER_MATCH,
   type MatchSimState,
 } from "../sim/match-sim.js";
-import { saveMatchResult } from "../db.js";
+import type { MatchEvent } from "../sim/events.js";
+import {
+  abandonMatch,
+  completeMatch,
+  insertEvents,
+  openMatch,
+} from "../db.js";
 
 /**
- * Phases 01–02 — the authoritative match room.
+ * Phases 01–04 — the authoritative match room.
  *
- * Phase 01 proved the tick loop; Phase 02 adds the simulation and two tactical
- * dials. Substitutions, formations and attributes are later phases and must not
- * creep in here.
+ * Phase 01 proved the tick loop; Phase 02 added the simulation and two tactical
+ * dials; Phase 04 captures and persists the event stream. Substitutions,
+ * formations and attributes are later phases and must not creep in here.
  *
  * Server authority, per docs/concerns/01-fairness-anticheat.md, is the whole
  * defence. Clients send INTENT — "I want attacking" — and never outcomes. The
@@ -45,6 +52,16 @@ const CHANGES_PER_HALF = 3;
 /** Rate limit, independent of the budget — a burst is rejected even if unspent. */
 const MIN_MS_BETWEEN_CHANGES = 1_500;
 const HALF_TIME_TICK = TICKS_PER_MATCH / 2;
+
+/**
+ * Phase 04: how often the event buffer reaches Postgres.
+ *
+ * Six batched inserts a match instead of ~370 round trips. The trade is that a
+ * process restart loses at most five ticks of in-flight events; writing once at
+ * full time would lose the whole match, and writing every tick would put Neon in
+ * the hot path of a three-second loop for no real gain.
+ */
+const FLUSH_EVERY_TICKS = 5;
 
 export type Phase = "lobby" | "live" | "fulltime";
 
@@ -92,11 +109,27 @@ export class MatchRoom extends Room<MatchState> {
   autoDispose = false;
 
   private disposeTimer?: NodeJS.Timeout;
-  private sim: MatchSimState = newMatch();
-  private rng = makeRng((Math.random() * 2 ** 32) >>> 0);
+  private seed = (Math.random() * 2 ** 32) >>> 0;
+  private sim: MatchSimState = newMatch(this.seed);
+  private rng = makeRng(this.seed);
   private lastChangeAt = new Map<string, number>();
   private persisted = false;
   private abuse = new AbuseTracker();
+
+  /* ── Phase 04: the event stream ─────────────────────────────────────────── */
+
+  /** Set at kickoff, not at full time — events need a row to point at. */
+  private matchId: string | null = null;
+  /** Resolves to whether the match row actually landed. */
+  private opening: Promise<boolean> = Promise.resolve(false);
+  /** Events produced since the last flush. */
+  private pending: MatchEvent[] = [];
+  /**
+   * Flushes are serialised through this chain. Ticks fire every three seconds
+   * and a flush is a network round trip, so two could otherwise overlap and
+   * reach the database out of order.
+   */
+  private flushing: Promise<void> = Promise.resolve();
 
   static async onAuth(token: string, options: JoinOptions): Promise<AuthContext> {
     const ticket = options?.ticket ?? token;
@@ -322,19 +355,53 @@ export class MatchRoom extends Room<MatchState> {
     if (!this.slotFor(client)) return;
     if (this.state.players.size === 0) return;
 
+    // The match row is opened HERE rather than at full time, because the event
+    // stream flushes while the match is still being played and its rows need a
+    // match to point at. Deliberately not awaited: the first flush is fifteen
+    // seconds away and kickoff must not wait on a network round trip.
+    this.matchId = randomUUID();
+    this.opening = this.openRecord(this.matchId);
+
     this.state.phase = "live";
     this.state.tickAt = Date.now();
     this.setSimulationInterval(() => this.advance(), TICK_MS);
-    console.log(`[match] room ${this.roomId} kicked off`);
+    console.log(`[match] room ${this.roomId} kicked off as match ${this.matchId}`);
+  }
+
+  private async openRecord(matchId: string): Promise<boolean> {
+    const home = this.sideSlot("home");
+    const away = this.sideSlot("away");
+    try {
+      return await openMatch({
+        matchId,
+        roomId: this.roomId,
+        homeUserId: home?.userId ?? null,
+        awayUserId: away?.userId ?? null,
+        homeMentality: home?.mentality ?? DEFAULT_DIALS.mentality,
+        homePressing: home?.pressing ?? DEFAULT_DIALS.pressing,
+        awayMentality: away?.mentality ?? DEFAULT_DIALS.mentality,
+        awayPressing: away?.pressing ?? DEFAULT_DIALS.pressing,
+      });
+    } catch (error) {
+      // The match still plays. It simply won't be recorded, and that is said
+      // out loud rather than discovered later as a missing row.
+      console.error("[match] could not open the match record:", error);
+      return false;
+    }
   }
 
   private handleRematch(client: Client) {
     if (this.state.phase !== "fulltime") return;
     if (!this.slotFor(client)) return;
 
-    this.sim = newMatch();
-    this.rng = makeRng((Math.random() * 2 ** 32) >>> 0);
+    // A rematch is a NEW match, not a reset of the old one: its own id, its own
+    // event log, its own row. The previous one is already finished and closed.
+    this.seed = (Math.random() * 2 ** 32) >>> 0;
+    this.sim = newMatch(this.seed);
+    this.rng = makeRng(this.seed);
     this.persisted = false;
+    this.matchId = null;
+    this.pending = [];
     this.lastChangeAt.clear();
 
     this.state.phase = "lobby";
@@ -364,12 +431,31 @@ export class MatchRoom extends Room<MatchState> {
   private advance() {
     if (this.state.phase !== "live") return;
 
-    simulateTick(this.sim, this.dialsFor("home"), this.dialsFor("away"), this.rng);
+    // The events this tick produced, in order. Phase 04: these are the spine of
+    // the system, so they are captured at the moment the sim decides them, not
+    // reconstructed afterwards from the aggregates.
+    const produced: MatchEvent[] = [];
+    simulateTick(
+      this.sim,
+      this.dialsFor("home"),
+      this.dialsFor("away"),
+      this.rng,
+      produced,
+    );
 
     this.state.tick = this.sim.tick;
     this.state.minute = this.sim.tick * SIM_MINUTES_PER_TICK;
     this.state.tickAt = Date.now();
     this.applyScore();
+
+    if (produced.length > 0) {
+      this.pending.push(...produced);
+      // Broadcast, not replicated state: the ticker and the 2D viewer want a
+      // live feed, but three hundred events do not belong in a schema that is
+      // diffed every tick and re-sent in full to a reconnecting client.
+      // See docs/concerns/08-mobile-performance.md.
+      this.broadcast("events", produced);
+    }
 
     // Half time refreshes the change budget, which is what makes it a budget
     // per half rather than per match.
@@ -378,7 +464,69 @@ export class MatchRoom extends Room<MatchState> {
       for (const slot of this.state.players.values()) slot.changesUsed = 0;
     }
 
+    if (this.sim.tick % FLUSH_EVERY_TICKS === 0) this.scheduleFlush();
+
     if (this.sim.tick >= TICKS_PER_MATCH) this.endMatch();
+  }
+
+  private sideSlot(side: "home" | "away"): PlayerSlot | undefined {
+    for (const slot of this.state.players.values()) {
+      if (slot.side === side) return slot;
+    }
+    return undefined;
+  }
+
+  /**
+   * Drains the buffer into Postgres in one batched statement.
+   *
+   * Serialised through `this.flushing` so two flushes cannot overlap — ticks
+   * fire every three seconds and a round trip can outlast that, and events
+   * arriving out of order would leave the `seq` column looking gapped when it
+   * is merely late.
+   */
+  private scheduleFlush(): Promise<void> {
+    this.flushing = this.flushing.then(() => this.flushNow());
+    return this.flushing;
+  }
+
+  private async flushNow(): Promise<void> {
+    if (this.pending.length === 0) return;
+    const matchId = this.matchId;
+    if (!matchId) return;
+
+    if (!(await this.opening)) {
+      // No match row, so there is nothing for these to reference. Drop them
+      // rather than retrying forever, and say so.
+      console.warn(
+        `[match] ${this.pending.length} events discarded: match ${matchId} was never opened`,
+      );
+      this.pending = [];
+      return;
+    }
+
+    const batch = this.pending;
+    this.pending = [];
+
+    // One retry. `(match_id, seq)` is unique, so a retry after a write that
+    // actually succeeded fails on the index instead of duplicating the log —
+    // which is precisely why retrying here is safe.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        await insertEvents(matchId, batch);
+        return;
+      } catch (error) {
+        if (attempt === 2) {
+          // Loud, and detectable afterwards: the missing rows show up as a gap
+          // in `seq`, which is what `events:verify` checks for.
+          console.error(
+            `[match] failed to persist ${batch.length} events (seq ${batch[0].seq}–${batch[batch.length - 1].seq}):`,
+            error,
+          );
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    }
   }
 
   private endMatch() {
@@ -394,27 +542,29 @@ export class MatchRoom extends Room<MatchState> {
     if (this.persisted) return;
     this.persisted = true;
 
-    const bySide = (side: "home" | "away") => {
-      for (const slot of this.state.players.values()) {
-        if (slot.side === side) return slot;
-      }
-      return undefined;
-    };
-    const home = bySide("home");
-    const away = bySide("away");
+    // The tail of the event log first, so the match is never marked finished
+    // while some of its events are still only in memory.
+    await this.scheduleFlush();
+
+    const matchId = this.matchId;
+    if (!matchId || !(await this.opening)) return;
+
+    const home = this.sideSlot("home");
+    const away = this.sideSlot("away");
 
     try {
-      await saveMatchResult({
-        roomId: this.roomId,
-        homeUserId: home?.userId ?? null,
-        awayUserId: away?.userId ?? null,
+      await completeMatch({
+        matchId,
         homeScore: this.state.home.goals,
         awayScore: this.state.away.goals,
         homePossession: this.state.home.possession,
         homeShots: this.state.home.shots,
         awayShots: this.state.away.shots,
-        homeXg: this.state.home.xg,
-        awayXg: this.state.away.xg,
+        // The sim's own totals, not the two-decimal ones the UI displays: this
+        // column is the checksum the event log is verified against, so it wants
+        // the number the sim actually accumulated.
+        homeXg: this.sim.home.xg,
+        awayXg: this.sim.away.xg,
         homeMentality: home?.mentality ?? DEFAULT_DIALS.mentality,
         homePressing: home?.pressing ?? DEFAULT_DIALS.pressing,
         awayMentality: away?.mentality ?? DEFAULT_DIALS.mentality,
@@ -423,7 +573,7 @@ export class MatchRoom extends Room<MatchState> {
     } catch (error) {
       // A failed write must not take the room down — the managers still get
       // their result, and the failure is loud rather than silent.
-      console.error("[match] failed to persist result:", error);
+      console.error("[match] failed to complete the match record:", error);
     }
   }
 
@@ -509,5 +659,19 @@ export class MatchRoom extends Room<MatchState> {
   onDispose() {
     this.cancelDisposal();
     console.log(`[match] room ${this.roomId} disposed at tick ${this.state.tick}`);
+
+    // A room that died mid-match leaves a row still claiming to be live. Sweep
+    // it, so an abandoned match is visibly abandoned rather than indistinguishable
+    // from one that is still being played. Best effort by nature — if the
+    // process is being killed this may not land, which is exactly why the row
+    // is written at kickoff and not relied upon to be tidied at the end.
+    if (this.state.phase === "live" && this.matchId) {
+      const matchId = this.matchId;
+      void this.scheduleFlush()
+        .then(() => abandonMatch(matchId))
+        .catch((error) =>
+          console.error("[match] could not mark the match abandoned:", error),
+        );
+    }
   }
 }

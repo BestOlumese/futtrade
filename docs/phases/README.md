@@ -9,8 +9,8 @@
 - [x] [01 — Tick Loop Skeleton](01-tick-loop-skeleton.md) — **complete**, closed 2026-08-08
 - [x] [02 — Minimal Sim + Two Tactical Dials](02-minimal-sim-two-dials.md) — **complete**, closed 2026-08-08
 - [x] [03 — Server Validation & Anti-Cheat Guardrails](03-server-validation-guardrails.md) — **complete**, closed 2026-08-09
-- [04 — Event Schema & Persistence](04-event-schema-persistence.md) ← **current**
-- [05 — Basic 2D Viewer (Post-Match)](05-basic-2d-viewer-postmatch.md)
+- [x] [04 — Event Schema & Persistence](04-event-schema-persistence.md) — **complete**, closed 2026-08-09
+- [05 — Basic 2D Viewer (Post-Match)](05-basic-2d-viewer-postmatch.md) ← **current**
 - [06 — Live 2D Dot Replay](06-live-2d-dot-replay.md)
 
 ## Matchmaking

@@ -1,5 +1,6 @@
 import {
   boolean,
+  index,
   integer,
   pgTable,
   real,
@@ -90,12 +91,18 @@ export const verification = pgTable("verification", {
 });
 
 /**
- * Phase 02 — the minimal match record.
+ * The match record. Phase 02 wrote the result; Phase 04 gave it a lifecycle.
  *
- * Deliberately just the result. The match EVENT STREAM is Phase 04, and
- * AGENTS.md calls that schema the spine of the whole system — inventing it
- * early here, one column at a time, is exactly how it would end up wrong.
- * Everything below is derivable from the event stream once that exists.
+ * The row is inserted AT KICKOFF with `status = 'live'`, not at full time. That
+ * is what lets match_event carry a real foreign key from the first mid-match
+ * flush onward — and it means a match that crashed in the 60th minute is a row
+ * you can find and investigate rather than silence.
+ *
+ * The aggregate columns below are all derivable from match_event now. They are
+ * kept anyway, as a denormalised summary so a match-history list is one cheap
+ * query — and the duplication is made safe by being asserted: `events:verify`
+ * sums the event log and requires it to equal these exactly. See
+ * docs/features/03-event-stream.md.
  *
  * User ids are nullable because a slot can be unfilled: a manager may play a
  * match alone against fixed default dials.
@@ -107,13 +114,18 @@ export const match = pgTable("match", {
   homeUserId: text("home_user_id").references(() => user.id, { onDelete: "set null" }),
   awayUserId: text("away_user_id").references(() => user.id, { onDelete: "set null" }),
 
-  homeScore: integer("home_score").notNull(),
-  awayScore: integer("away_score").notNull(),
-  homeShots: integer("home_shots").notNull(),
-  awayShots: integer("away_shots").notNull(),
-  homeXg: real("home_xg").notNull(),
-  awayXg: real("away_xg").notNull(),
-  homePossession: integer("home_possession").notNull(),
+  /** `live` at kickoff → `finished` at full time, or `abandoned` if the room died. */
+  status: text("status").notNull().default("live"),
+
+  // Zero at kickoff and rewritten at full time, so they need defaults: the
+  // insert happens before a ball has been kicked.
+  homeScore: integer("home_score").notNull().default(0),
+  awayScore: integer("away_score").notNull().default(0),
+  homeShots: integer("home_shots").notNull().default(0),
+  awayShots: integer("away_shots").notNull().default(0),
+  homeXg: real("home_xg").notNull().default(0),
+  awayXg: real("away_xg").notNull().default(0),
+  homePossession: integer("home_possession").notNull().default(50),
 
   // The dials each side finished on. Enough to analyse the exit criterion
   // against real played matches, not only simulated ones.
@@ -122,10 +134,81 @@ export const match = pgTable("match", {
   awayMentality: text("away_mentality").notNull(),
   awayPressing: text("away_pressing").notNull(),
 
-  finishedAt: timestamp("finished_at")
+  startedAt: timestamp("started_at")
     .$defaultFn(() => new Date())
     .notNull(),
+  /** Null while the match is live — full time is not known at kickoff. */
+  finishedAt: timestamp("finished_at"),
 });
+
+/**
+ * Phase 04 — the match event stream. Per AGENTS.md this is the spine of the
+ * whole system: the shot map, heatmap, momentum graph, live ticker, player
+ * ratings and market price movement are all derived from these rows and from no
+ * other data path. Read docs/features/03-event-stream.md before changing it.
+ *
+ * `seq` runs 1..N per match with no gaps, and the unique index below makes that
+ * a property the DATABASE enforces rather than one a test hopes to notice. A
+ * retried flush violates the index; a lost batch shows up as
+ * `max(seq) != count(*)`. Both are checked by `events:verify`.
+ *
+ * `x` is always measured toward the goal the ACTING side is attacking, for both
+ * sides and in both halves — so x = 95 is near the opponent's goal whichever
+ * team took the shot. Absolute coordinates plus a direction flag would mean
+ * every consumer has to remember to flip, and the one that forgets draws half
+ * the shots in its own box.
+ */
+export const matchEvent = pgTable(
+  "match_event",
+  {
+    id: text("id").primaryKey(),
+    matchId: text("match_id")
+      .notNull()
+      .references(() => match.id, { onDelete: "cascade" }),
+
+    /** 1..N within the match, contiguous. The integrity guarantee. */
+    seq: integer("seq").notNull(),
+    tick: integer("tick").notNull(),
+    /**
+     * Display clock. Spread WITHIN the tick rather than equal to `tick × 3`, so
+     * a ticker doesn't stack five events on the same minute — which is why this
+     * is stored rather than derived.
+     */
+    minute: integer("minute").notNull(),
+
+    /** The side of the primary actor: `home` or `away`. */
+    side: text("side").notNull(),
+    /** `shot` | `pass` | `tackle` | `card` | `sub`. */
+    type: text("type").notNull(),
+    /** Per type — see the table in docs/features/03-event-stream.md. */
+    outcome: text("outcome").notNull(),
+
+    x: real("x").notNull(),
+    y: real("y").notNull(),
+    /** Shots only. The chance quality the sim actually rolled against. */
+    xg: real("xg"),
+
+    /** 1–11. Meaningful today, and unchanged by the arrival of real players. */
+    shirt: integer("shirt").notNull(),
+    /**
+     * The assister, receiver, dispossessed player or player going off. Same side
+     * as `shirt` for every type EXCEPT `tackle`, where it is the opponent.
+     */
+    secondaryShirt: integer("secondary_shirt"),
+
+    /**
+     * Null on every row written today. Phase 10 backfills real player ids
+     * alongside the shirt number rather than replacing it, so the column exists
+     * now to spare that phase a migration.
+     */
+    playerId: text("player_id"),
+    secondaryPlayerId: text("secondary_player_id"),
+  },
+  (table) => [
+    uniqueIndex("match_event_match_seq_idx").on(table.matchId, table.seq),
+    index("match_event_match_idx").on(table.matchId),
+  ],
+);
 
 /**
  * Phase 03 — the audit trail for rejected client messages.
@@ -157,5 +240,6 @@ export const schema = {
   account,
   verification,
   match,
+  matchEvent,
   matchAudit,
 };
