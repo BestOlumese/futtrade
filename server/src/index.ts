@@ -6,6 +6,7 @@ import { WebSocketTransport } from "@colyseus/ws-transport";
 import { BootstrapRoom } from "./rooms/BootstrapRoom.js";
 import { MatchRoom } from "./rooms/MatchRoom.js";
 import { secretFingerprint } from "./match-ticket.js";
+import { dbConfigured } from "./db.js";
 
 // Before anything opens a socket — notably the Neon write path.
 await forceIpv4IfRequested();
@@ -56,6 +57,16 @@ app.get("/healthz", (_req, res) => {
     status: "ok",
     uptime: process.uptime(),
     ticketSecret: fingerprint ? { configured: true, fingerprint } : { configured: false },
+    /**
+     * Whether results and the event stream will be persisted at all.
+     *
+     * Same reasoning as the fingerprint above: without this, the only way to
+     * discover that DATABASE_URL is missing is to play a whole match and then
+     * go looking for a row that was never written. Reads the environment only —
+     * this endpoint must never open a connection, or a cold Neon wake would
+     * fail Render's health check.
+     */
+    database: { configured: dbConfigured() },
   });
 });
 
