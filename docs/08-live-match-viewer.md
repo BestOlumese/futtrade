@@ -81,24 +81,45 @@ A shot over the bar crosses the goal line inside the posts when seen from above,
 so it is carried **past** the line rather than stopped at it. That is the
 top-down way to show height, and it reads `end_z` rather than guessing.
 
-**A goal never borrows size.** It is marked by punching the centre out of the
-dot, at exactly the radius its xG earns. An earlier version added a ring, which
-made every goal physically larger than any other mark — taking meaning from the
-one channel that already has some.
+**A goal never borrows size, and never takes a ring.** It is drawn at exactly
+the radius its xG earns, with a soft bloom behind it — the same device the
+landing page gives the ball, and what the design system means by "lime at 12–20%
+in a blur, never a solid halo". Earlier attempts added a ring and then a
+punched-out centre; both were shapes drawn around a mark to decorate it, and both
+made a goal read as physically bigger than the data said.
+
+**Every stroke on this map is `vectorEffect="non-scaling-stroke"`**, following
+[`components/landing/pitch.tsx`](../components/landing/pitch.tsx), which is where
+a pitch's visual language is defined for this product. Pitch markings are 1px at
+0.4 opacity, the goal line stronger at 0.75.
+
+This matters more than it sounds. Stroke widths given in *metres* scale with the
+drawing: `strokeWidth={0.3}` on a 105 m pitch rendered 460 px wide is two and a
+half device pixels, and every line and dot edge comes out thick and blunt. A
+non-scaling stroke is the fix, not a smaller number.
+
+**Dots follow the same source.** A solid fill and **no outline at all** for
+marks that were on target; a 1.5 px hairline outline over a `midnight` fill for
+those that weren't. Nothing else is drawn around them.
 
 **Every mark sits on a `midnight` halo.** It keeps overlapping dots countable in
 a crowded penalty area, and it evens the palettes: `lime` reads heavier than
-`floodlight` at an identical radius, and an identical halo on both normalises
-them.
+`floodlight` at an identical radius.
 
 **Lines are drawn beneath every dot**, in one pass rather than per shot —
 otherwise a later shot's line crosses an earlier shot's dot, which is most of
 what makes this kind of plot look tangled.
 
+**There is no line down the left-hand side.** That edge is where the view is
+cropped, not where the pitch ends; a boundary there would invent a touchline
+that isn't on the grass. Touchlines, goal line, halfway line, centre circle,
+both boxes, the spot, the D and the corner arcs are all drawn at their real
+dimensions.
+
 | Channel | Meaning |
 |---|---|
 | **Line** | what became of the shot, and where it ended |
-| **Radius** | xG — capped at roughly 1.3 m, because the line now carries the outcome |
+| **Radius** | xG — capped small, because the line carries the outcome |
 | **Colour** | team, and only team |
 
 Colour is never the only signal: line style and end point carry the outcome, so

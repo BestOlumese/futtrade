@@ -147,6 +147,34 @@ The lesson worth keeping: "these are different sizes" was wrong as stated and
 right as a complaint. Measuring first is what turned it into the two faults that
 actually existed.
 
+## The shot map, fourth time
+
+The verdict on the third version was that the pitch looked bad, the circle
+borders were too thick, and it should look like the landing page. All three were
+the same root cause, and it is worth writing down:
+
+**Stroke widths were given in metres.** `strokeWidth={0.3}` on a 105 m pitch
+rendered 460 px wide is two and a half device pixels. Every pitch line and every
+dot edge came out blunt, and no amount of choosing a smaller number fixes it —
+the value has to stop scaling with the drawing.
+[`components/landing/pitch.tsx`](../../components/landing/pitch.tsx) already had
+the answer: `vectorEffect="non-scaling-stroke"` at 1 px, which is why the landing
+pitch reads as hairline at any size.
+
+The map now follows that component exactly — 1 px markings at 0.4 opacity, goal
+line at 0.75 — and its dot treatment too: **solid fill with no outline at all**
+for on-target marks, a 1.5 px hairline over `midnight` for the rest.
+
+Rings are gone entirely. A goal is marked by a soft bloom rather than anything
+drawn around it, which is the device the landing page gives the ball and what the
+design system means by a glow. It also stopped `saved` being drawn at 0.62 fill,
+which turned `floodlight` into a muddy grey that read as disabled.
+
+The pitch gained its real furniture — halfway line, centre circle, the D, corner
+arcs — and **lost its left-hand boundary**, which was never a touchline. It was
+where the view is cropped, and drawing a line there invented a pitch edge that
+isn't on the grass.
+
 ## Noted for later
 
 - **The shot map has no genuine tap-in**, and it shows: the chance-quality band
