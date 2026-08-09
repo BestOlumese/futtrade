@@ -140,6 +140,13 @@ function checkAgainstSim(result: MatchResult, label: string) {
       `${label}/${side}: yellows ${built.yellows} vs ${truth.yellows}`,
     );
     must(built.reds === truth.reds, `${label}/${side}: reds ${built.reds} vs ${truth.reds}`);
+    // Phase 05: possession is pass share, so these two are no longer cosmetic —
+    // a drift here would put a wrong percentage on the stat card.
+    must(built.passes === truth.passes, `${label}/${side}: passes ${built.passes} vs ${truth.passes}`);
+    must(
+      built.tackles === truth.tackles,
+      `${label}/${side}: tackles ${built.tackles} vs ${truth.tackles}`,
+    );
   }
 }
 
@@ -156,6 +163,7 @@ async function main() {
   };
   let longest = 0;
   const shotDistances: number[] = [];
+  const possessionCheck = { fromEvents: 0, fromSim: 0 };
 
   for (let i = 0; i < RUNS; i++) {
     // Sweep the dial space rather than replaying one setting: a bug in the
@@ -187,6 +195,13 @@ async function main() {
       `${label}: collecting events changed the match`,
     );
 
+    // The stat card's definition, computed the way the app will compute it.
+    const homePasses = totalsFrom(result.events, "home").passes;
+    const awayPasses = totalsFrom(result.events, "away").passes;
+    const total = homePasses + awayPasses;
+    possessionCheck.fromEvents += total ? Math.round((homePasses / total) * 100) : 50;
+    possessionCheck.fromSim += result.homePossession;
+
     totals.events += result.events.length;
     longest = Math.max(longest, result.events.length);
     for (const e of result.events) {
@@ -210,6 +225,13 @@ async function main() {
   }
 
   const per = (n: number) => (n / RUNS).toFixed(2);
+  // Possession must be reproducible from the log alone, since that is exactly
+  // what the Phase 05 stat card does.
+  must(
+    Math.abs(possessionCheck.fromEvents - possessionCheck.fromSim) < 1e-9,
+    `possession from events ${possessionCheck.fromEvents} vs from sim ${possessionCheck.fromSim}`,
+  );
+
   console.log("PER MATCH (both sides combined)");
   console.log(`  events          ${per(totals.events)}   peak ${longest}`);
   console.log(`  passes          ${per(totals.passes)}   sampled, not exhaustive`);

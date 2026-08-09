@@ -45,12 +45,16 @@ import {
  * played without it — and then the tuning harness and the event verifier would
  * no longer be looking at the same matches.
  *
- *   rng       (passed in)   outcomes: possession, shots, quality, goals, fouls
+ *   rng       (passed in)   outcomes and volumes: shots, quality, goals, fouls,
+ *                           and how many passes and tackles each side plays —
+ *                           pass counts live here because Phase 05 defines
+ *                           possession as pass share, which makes them a match
+ *                           statistic rather than a decoration
  *   booking   (on state)    which shirt is carded — a second yellow is a red,
  *                           so this genuinely affects the match and must not
  *                           depend on whether anyone is watching
- *   detail    (on state)    positions, shirts, passes, tackles won — cosmetic,
- *                           drawn only when events are actually collected
+ *   detail    (on state)    positions and shirts — purely descriptive, drawn
+ *                           only when events are actually collected
  *
  * The property this buys: a given seed produces the same scoreline whether or
  * not events are collected. It is worth the two extra lines.
@@ -99,7 +103,7 @@ const RED_SHOT_PENALTY = 0.72;
 /** ...and the chances you give up get considerably better. */
 const RED_CONCEDE_QUALITY = 1.3;
 
-/** Tackles won per side per tick — cosmetic, but they carry the pressing story. */
+/** Tackles won per side per tick, on top of the fouls drawn separately. */
 const BASE_TACKLES_PER_TICK = 0.5;
 /** Sampled, not exhaustive: ~10 a tick across both sides, ~300 a match. */
 const PASSES_PER_TICK = 10;
@@ -109,8 +113,19 @@ export type SideState = {
   shots: number;
   /** Accumulated chance quality — the xG this side has generated. */
   xg: number;
-  /** Ticks in which this side had the majority of the ball. */
-  possessionTicks: number;
+  /**
+   * Passes played. Phase 05: possession is defined as PASS SHARE, which is how
+   * real providers compute it from event data and the only definition derivable
+   * from the event log.
+   *
+   * This used to be a count of ticks in which the side had the majority of the
+   * ball — a different number, noisier, and one the stat card could not have
+   * reproduced from `match_event`. Two figures both called "possession" is
+   * exactly the second data path AGENTS.md forbids, so there is now one.
+   */
+  passes: number;
+  /** Every tackle event, fouls included — so it equals `totalsFrom().tackles`. */
+  tackles: number;
   fouls: number;
   yellows: number;
   reds: number;
@@ -130,9 +145,21 @@ export type MatchSimState = {
 
 export function emptySide(): SideState {
   return {
-    goals: 0, shots: 0, xg: 0, possessionTicks: 0,
+    goals: 0, shots: 0, xg: 0, passes: 0, tackles: 0,
     fouls: 0, yellows: 0, reds: 0, booked: new Set(),
   };
+}
+
+/**
+ * Possession as a percentage for the home side — pass share, rounded.
+ *
+ * The single definition of possession in the product. The stat card computes it
+ * the same way from `match_event`, so the stored column and the displayed
+ * number are the same number rather than two estimates of it.
+ */
+export function possessionPercent(home: SideState, away: SideState): number {
+  const total = home.passes + away.passes;
+  return total === 0 ? 50 : Math.round((home.passes / total) * 100);
 }
 
 export function newMatch(seed = 1): MatchSimState {
@@ -292,6 +319,9 @@ function commitFouls(
 
   for (let i = 0; i < fouls; i++) {
     side.fouls += 1;
+    // A foul IS a tackle event, so it counts toward the tackle total that
+    // `totalsFrom()` reads back off the log.
+    side.tackles += 1;
 
     const roll = rng();
     const straightRed = roll < STRAIGHT_RED_PER_FOUL;
@@ -350,23 +380,44 @@ function commitFouls(
   }
 }
 
-/** Tackles won and passes played. Purely descriptive — no effect on the match. */
+/**
+ * How much a side did this tick, before any of it is described.
+ *
+ * Drawn from the MAIN stream and always, collector or not, because possession
+ * is now defined as pass share — which makes pass volume a match statistic
+ * rather than a cosmetic detail. Tackle volume rides along with it so the sim's
+ * counter can be asserted equal to `totalsFrom().tackles`.
+ */
+function drawPlay(
+  side: SideState,
+  dials: Dials,
+  share: number,
+  rng: () => number,
+): { passes: number; tackles: number } {
+  // You tackle when you haven't got the ball, and pressing decides how high.
+  const tackles = poisson(
+    BASE_TACKLES_PER_TICK * PRESSING_EFFECT[dials.pressing].fouls * ((1 - share) / 0.5),
+    rng,
+  );
+  const passes = poisson(PASSES_PER_TICK * share, rng);
+
+  side.passes += passes;
+  side.tackles += tackles;
+  return { passes, tackles };
+}
+
+/** Turns those counts into events. Positions and players only — no outcomes. */
 function describePlay(
   sideName: Side,
   dials: Dials,
-  share: number,
+  play: { passes: number; tackles: number },
   state: MatchSimState,
   out: MatchEvent[],
 ) {
   const detail = state.detail;
   const tick = state.tick + 1;
 
-  // You tackle when you haven't got the ball, and pressing decides how high.
-  const tackles = poisson(
-    BASE_TACKLES_PER_TICK * PRESSING_EFFECT[dials.pressing].fouls * ((1 - share) / 0.5),
-    detail,
-  );
-  for (let i = 0; i < tackles; i++) {
+  for (let i = 0; i < play.tackles; i++) {
     const where = tackleLocation(dials.pressing, detail);
     out.push({
       seq: 0, tick,
@@ -377,8 +428,7 @@ function describePlay(
     });
   }
 
-  const passes = poisson(PASSES_PER_TICK * share, detail);
-  for (let i = 0; i < passes; i++) {
+  for (let i = 0; i < play.passes; i++) {
     const where = passLocation(dials.mentality, detail);
     const passer = pickShirt("pass", detail);
     out.push({
@@ -408,10 +458,6 @@ export function simulateTick(
   collect?: MatchEvent[],
 ): MatchSimState {
   const share = possessionShare(homeDials, awayDials);
-
-  if (rng() < share) state.home.possessionTicks += 1;
-  else state.away.possessionTicks += 1;
-
   const produced: Collector = collect ? [] : undefined;
 
   takeShots(state.home, state.away, "home", homeDials, awayDials, share, rng, state, produced);
@@ -420,9 +466,12 @@ export function simulateTick(
   commitFouls(state.home, "home", homeDials, share, rng, state, produced);
   commitFouls(state.away, "away", awayDials, 1 - share, rng, state, produced);
 
+  const homePlay = drawPlay(state.home, homeDials, share, rng);
+  const awayPlay = drawPlay(state.away, awayDials, 1 - share, rng);
+
   if (produced) {
-    describePlay("home", homeDials, share, state, produced);
-    describePlay("away", awayDials, 1 - share, state, produced);
+    describePlay("home", homeDials, homePlay, state, produced);
+    describePlay("away", awayDials, awayPlay, state, produced);
 
     // Stable sort, so a card still follows the foul that caused it even though
     // the two share a minute.
@@ -461,9 +510,7 @@ export function simulateMatch(
   return {
     home: state.home,
     away: state.away,
-    homePossession: Math.round(
-      (state.home.possessionTicks / TICKS_PER_MATCH) * 100,
-    ),
+    homePossession: possessionPercent(state.home, state.away),
     events,
   };
 }

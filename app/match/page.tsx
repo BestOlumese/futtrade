@@ -6,6 +6,8 @@ import { Atmosphere } from "@/components/atmosphere/atmosphere";
 import { Panel } from "@/components/ui/panel";
 import { ButtonLink } from "@/components/ui/button";
 import { MatchRoomPanel } from "@/components/match/match-room";
+import { RecentMatches } from "@/components/match/recent-matches";
+import { listRecentMatches } from "@/lib/match/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +17,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * Phase 01 — Tick Loop Skeleton.
+ * Phases 01–05 — the match room, and the way back to matches already played.
  *
  * A working surface, so it takes the quiet atmosphere: wash and grain, no beams
  * or glow behind data. This page grows into the real match centre in Phase 02
@@ -27,13 +29,19 @@ export default async function MatchPage() {
     .getSession({ headers: await headers() })
     .catch(() => null);
 
+  // Phase 05: without a list, the post-match summary is only reachable in the
+  // ninety seconds after full time.
+  const recent = session?.user
+    ? await listRecentMatches(session.user.id).catch(() => [])
+    : [];
+
   return (
     <>
       <Atmosphere variant="quiet" />
 
       <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-16">
         <header className="flex flex-col gap-3">
-          <span className="label text-lime">Phase 02</span>
+          <span className="label text-lime">Phase 05</span>
           <h1 className="display-xl text-floodlight">Match room</h1>
           <p className="max-w-xl font-sans text-sm leading-relaxed text-floodlight/50">
             Two managers, two dials, ninety minutes in ninety seconds. The
@@ -43,7 +51,10 @@ export default async function MatchPage() {
         </header>
 
         {session?.user ? (
-          <MatchRoomPanel />
+          <>
+            <MatchRoomPanel />
+            <RecentMatches matches={recent} />
+          </>
         ) : (
           <Panel bodyClassName="p-6 flex flex-col gap-4">
             <h2 className="display-md text-floodlight">Sign in to join</h2>

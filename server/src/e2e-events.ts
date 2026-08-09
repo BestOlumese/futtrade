@@ -22,7 +22,14 @@ import { Client, type Room } from "colyseus.js";
 import { forceIpv4IfRequested } from "./force-ipv4.js";
 import { totalsFrom, type MatchEvent } from "./sim/events.js";
 
-const endpoint = process.argv[2] ?? "ws://localhost:2567";
+const args = process.argv.slice(2);
+const endpoint = args.find((a) => a.startsWith("ws")) ?? "ws://localhost:2567";
+/** Leave the match and its account behind, so a browser can look at it. */
+const keep = args.includes("--keep");
+/** Play as an existing account instead of a throwaway one. */
+const asUser = args[args.indexOf("--user") + 1];
+/** Fill the away seat with a second real account, as a real match has. */
+const asUser2 = args.includes("--user2") ? args[args.indexOf("--user2") + 1] : null;
 
 const failures: string[] = [];
 function check(name: string, held: boolean, note = "") {
@@ -31,6 +38,17 @@ function check(name: string, held: boolean, note = "") {
 }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function mintTicket(secret: string, userId: string): Promise<string> {
+  return new SignJWT({ username: "Phase04E2E" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(userId)
+    .setJti(randomUUID())
+    .setIssuer("futtrade-app")
+    .setAudience("futtrade-match")
+    .setExpirationTime("60s")
+    .sign(new TextEncoder().encode(secret));
+}
 
 type AnyState = {
   phase: string;
@@ -52,26 +70,21 @@ async function main() {
 
   // A throwaway account. `match.home_user_id` is a real foreign key, so a made
   // up id would fail the insert and the run would fail for the wrong reason.
-  const userId = randomUUID();
+  const userId = args.includes("--user") ? asUser : randomUUID();
   const email = `e2e-${userId.slice(0, 8)}@futtrade.test`;
-  await sql`
-    insert into "user" (id, name, email, email_verified, created_at, updated_at)
-    values (${userId}, 'Phase 04 E2E', ${email}, true, now(), now())
-  `;
+  if (!args.includes("--user")) {
+    await sql`
+      insert into "user" (id, name, email, email_verified, created_at, updated_at)
+      values (${userId}, 'Phase 04 E2E', ${email}, true, now(), now())
+    `;
+  }
 
   console.log(`\nPhase 04 end-to-end — ${endpoint}`);
   console.log(`test account ${email}\n`);
 
   let roomId = "";
   try {
-    const ticket = await new SignJWT({ username: "Phase04E2E" })
-      .setProtectedHeader({ alg: "HS256" })
-      .setSubject(userId)
-      .setJti(randomUUID())
-      .setIssuer("futtrade-app")
-      .setAudience("futtrade-match")
-      .setExpirationTime("60s")
-      .sign(new TextEncoder().encode(secret));
+    const ticket = await mintTicket(secret, userId);
 
     // `create`, not `joinOrCreate`: matchmaking would drop this client into
     // whatever room happens to be open — including one left at full time by the
@@ -83,6 +96,18 @@ async function main() {
     // Everything the client is told, live. This is the feed Phase 06 will draw.
     const broadcast: MatchEvent[] = [];
     room.onMessage("events", (batch: MatchEvent[]) => broadcast.push(...batch));
+
+    // A second manager in the away seat, so both sides of the log belong to a
+    // real account — which is what a real match looks like, and the only way to
+    // exercise both user id columns on the match row.
+    let awayClient: Room | null = null;
+    if (asUser2) {
+      awayClient = await new Client(endpoint).joinById(roomId, {
+        ticket: await mintTicket(secret, asUser2),
+      });
+      awayClient.onMessage("events", () => {});
+      console.log("  away seat filled by a second account");
+    }
 
     const st = () => room.state as unknown as AnyState;
     await wait(600);
@@ -113,6 +138,7 @@ async function main() {
     // The last flush and the completion update are async and fire after the
     // state flips to fulltime.
     await wait(4000);
+    if (awayClient) await awayClient.leave(true);
     await room.leave(true);
 
     check("the match reached full time", final.phase === "fulltime", final.phase);
@@ -207,12 +233,17 @@ async function main() {
         `${cards.length} cards`,
     );
 
-    await sql`delete from "match" where id = ${matchId}`;
-
-    await abandonedMatch(secret, userId);
+    if (keep) {
+      console.log(`\n  KEPT for inspection:  /match/${matchId}`);
+    } else {
+      await sql`delete from "match" where id = ${matchId}`;
+      await abandonedMatch(secret, userId);
+    }
   } finally {
-    await sql`delete from "user" where id = ${userId}`;
-    console.log("  cleaned up the test account and match");
+    if (!keep && !args.includes("--user")) {
+      await sql`delete from "user" where id = ${userId}`;
+      console.log("  cleaned up the test account and match");
+    }
   }
 
   console.log(
@@ -235,15 +266,7 @@ async function abandonedMatch(secret: string, userId: string) {
 
   const sql = neon(process.env.DATABASE_URL!);
 
-  const ticket = await new SignJWT({ username: "Phase04E2E" })
-    .setProtectedHeader({ alg: "HS256" })
-    .setSubject(userId)
-    .setJti(randomUUID())
-    .setIssuer("futtrade-app")
-    .setAudience("futtrade-match")
-    .setExpirationTime("60s")
-    .sign(new TextEncoder().encode(secret));
-
+  const ticket = await mintTicket(secret, userId);
   const room: Room = await new Client(endpoint).create("match", { ticket });
   const roomId = room.roomId;
   // Registered only to keep colyseus.js from warning about an unhandled type.

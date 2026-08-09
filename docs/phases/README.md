@@ -2,6 +2,17 @@
 
 27 phases (00-26), each independently scoped with its own goal, tasks, and exit criteria. Don't let scope from a later phase leak backward — the ordering exists to de-risk the hardest system (the live sim) before investing in anything that depends on it.
 
+## Owned by no phase
+
+One deliberate exception, recorded here so it stops looking like an oversight:
+
+- **`lib/demo/`** — `timeline.ts` and `clock.ts`, the landing page's scripted
+  150-second match loop. Marketing, not gameplay: it is a hand-authored fake
+  shown to people who have not signed up, and it shares no code with the real
+  match surfaces. It has no phase and needs none. The boundary rules — nothing
+  real may import it, nothing real should be back-ported into it — are in
+  [`../08-live-match-viewer.md`](../08-live-match-viewer.md).
+
 ## Foundation
 - [x] [00 — Bootstrap](00-bootstrap.md) — **complete**, closed 2026-08-08 and verified in production
 
@@ -10,8 +21,8 @@
 - [x] [02 — Minimal Sim + Two Tactical Dials](02-minimal-sim-two-dials.md) — **complete**, closed 2026-08-08
 - [x] [03 — Server Validation & Anti-Cheat Guardrails](03-server-validation-guardrails.md) — **complete**, closed 2026-08-09
 - [x] [04 — Event Schema & Persistence](04-event-schema-persistence.md) — **complete**, closed 2026-08-09
-- [05 — Basic 2D Viewer (Post-Match)](05-basic-2d-viewer-postmatch.md) ← **current**
-- [06 — Live 2D Dot Replay](06-live-2d-dot-replay.md)
+- [x] [05 — Basic 2D Viewer (Post-Match)](05-basic-2d-viewer-postmatch.md) — **complete**, closed 2026-08-09
+- [06 — Live 2D Dot Replay](06-live-2d-dot-replay.md) ← **current**
 
 ## Matchmaking
 - [07 — Matchmaking Queue](07-matchmaking-queue.md)

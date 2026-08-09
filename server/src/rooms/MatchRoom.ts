@@ -12,6 +12,7 @@ import {
 import {
   makeRng,
   newMatch,
+  possessionPercent,
   simulateTick,
   SIM_MINUTES_PER_TICK,
   TICKS_PER_MATCH,
@@ -94,6 +95,12 @@ export class MatchState extends Schema {
   /** Simulated minutes elapsed — what the UI shows as the match clock. */
   @type("number") minute = 0;
   @type("number") half = 1;
+  /**
+   * The row this match is being written to, published so the client can link to
+   * its summary at full time. Not a secret: any signed-in user may read a
+   * finished match, per docs/08-live-match-viewer.md. Empty before kickoff.
+   */
+  @type("string") matchId = "";
 
   @type(SideScore) home = new SideScore();
   @type(SideScore) away = new SideScore();
@@ -360,6 +367,7 @@ export class MatchRoom extends Room<MatchState> {
     // match to point at. Deliberately not awaited: the first flush is fifteen
     // seconds away and kickoff must not wait on a network round trip.
     this.matchId = randomUUID();
+    this.state.matchId = this.matchId;
     this.opening = this.openRecord(this.matchId);
 
     this.state.phase = "live";
@@ -401,6 +409,7 @@ export class MatchRoom extends Room<MatchState> {
     this.rng = makeRng(this.seed);
     this.persisted = false;
     this.matchId = null;
+    this.state.matchId = "";
     this.pending = [];
     this.lastChangeAt.clear();
 
@@ -415,13 +424,12 @@ export class MatchRoom extends Room<MatchState> {
   }
 
   private applyScore() {
-    const played = Math.max(this.sim.tick, 1);
     this.state.home.goals = this.sim.home.goals;
     this.state.home.shots = this.sim.home.shots;
     this.state.home.xg = Math.round(this.sim.home.xg * 100) / 100;
-    this.state.home.possession = Math.round(
-      (this.sim.home.possessionTicks / played) * 100,
-    );
+    // Pass share, the one definition of possession in the product — the same
+    // number the stat card derives from match_event. See possessionPercent().
+    this.state.home.possession = possessionPercent(this.sim.home, this.sim.away);
     this.state.away.goals = this.sim.away.goals;
     this.state.away.shots = this.sim.away.shots;
     this.state.away.xg = Math.round(this.sim.away.xg * 100) / 100;

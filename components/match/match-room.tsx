@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Client, type Room } from "colyseus.js";
 import { Panel } from "@/components/ui/panel";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { LiveBadge } from "@/components/ui/live-badge";
 import { notify } from "@/components/ui/toaster";
 import { DialControl } from "./dial-control";
@@ -53,6 +53,10 @@ export function MatchRoomPanel() {
   const [away, setAway] = useState<Score>({ goals: 0, shots: 0, xg: 0, possession: 50 });
   const [slots, setSlots] = useState<Slot[]>([]);
   const [meId, setMeId] = useState<string | null>(null);
+  // Published by the room at kickoff so full time can link straight to the
+  // summary, rather than making a manager go hunting for the match they just
+  // played.
+  const [matchId, setMatchId] = useState("");
   const [detail, setDetail] = useState<string | null>(null);
 
   const roomRef = useRef<Room | null>(null);
@@ -69,6 +73,7 @@ export function MatchRoomPanel() {
 
   const readState = useCallback((state: Record<string, unknown>) => {
     setPhase(String(state.phase ?? "lobby"));
+    setMatchId(String(state.matchId ?? ""));
     setMinute(Number(state.minute ?? 0));
     setHalf(Number(state.half ?? 1));
     const asScore = (v: unknown): Score => {
@@ -265,7 +270,17 @@ export function MatchRoomPanel() {
                 {opponent?.mentality ?? "balanced"} / {opponent?.pressing ?? "medium"}
               </span>.
             </p>
-            <Button onClick={() => roomRef.current?.send("rematch")}>Rematch</Button>
+            <div className="flex flex-wrap gap-3">
+              {matchId && (
+                <ButtonLink href={`/match/${matchId}`}>Match summary</ButtonLink>
+              )}
+              <Button
+                variant={matchId ? "secondary" : "primary"}
+                onClick={() => roomRef.current?.send("rematch")}
+              >
+                Rematch
+              </Button>
+            </div>
           </div>
         )}
       </Panel>

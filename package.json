@@ -13,7 +13,8 @@
     "db:studio": "drizzle-kit studio",
     "server:dev": "npm --prefix server run dev",
     "server:build": "npm --prefix server run build",
-    "inngest:dev": "npx inngest-cli@latest dev"
+    "inngest:dev": "npx inngest-cli@latest dev",
+    "match:check": "tsx scripts/check-match-derivation.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -26,6 +27,7 @@
     "nodemailer": "^9.0.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "recharts": "^3.10.1",
     "sonner": "^2.0.7"
   },
   "devDependencies": {
