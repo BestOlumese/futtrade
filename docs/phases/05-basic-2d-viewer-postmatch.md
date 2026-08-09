@@ -122,6 +122,31 @@ what prompted a small correction to the outcome constants.
 Matches played before this draw dots without lines and say so; they cannot be
 backfilled, because where the ball went was never observed.
 
+## The shot map, third time
+
+Shown the tabbed version, the report was that home and away dots were different
+sizes. They were not — measured on a real match, home's largest was **1.28 m**
+radius and away's **1.26 m**, off the same function. Two other things were
+producing the impression, and both were real faults:
+
+- **A goal took an extra ring** at `r + 1.4 m`, so the one goal on the map was
+  nearly three metres wider than anything else. It now punches the centre out of
+  the dot instead, at exactly the radius its xG earns. Size means xG and nothing
+  borrows from it.
+- **`lime` reads heavier than `floodlight`** at an identical radius. Every mark
+  now sits on a `midnight` halo, which evens the palettes and, more usefully,
+  keeps overlapping dots countable in a crowded penalty area.
+
+Two further clean-ups came with it: **two line weights instead of four**, so the
+map has a foreground and a background rather than four things competing; and
+**all lines drawn beneath all dots** in one pass, since drawing them per shot let
+a later shot's line cross an earlier shot's dot — most of what made it look
+tangled.
+
+The lesson worth keeping: "these are different sizes" was wrong as stated and
+right as a complaint. Measuring first is what turned it into the two faults that
+actually existed.
+
 ## Noted for later
 
 - **The shot map has no genuine tap-in**, and it shows: the chance-quality band

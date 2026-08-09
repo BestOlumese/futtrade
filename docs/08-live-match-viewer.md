@@ -56,14 +56,21 @@ poor answer to "whose chance was that". The tab group carries each team's name
 and a swatch of the colour its shots are drawn in, `steel`-bordered with a `lime`
 active state, exactly the low-key control this doc specifies for the view toggle.
 
-**Every shot draws its trajectory**, from where it was struck to where it ended:
+**Every shot draws its trajectory**, from where it was struck to where it ended.
+Deliberately **two line weights, not four** — on target speaks, everything else
+recedes. Four distinct weights across twenty-six overlapping lines is what made
+the first version read as busy.
 
 | outcome | line | dot |
 | --- | --- | --- |
-| goal | solid, full strength, into the goal | solid, with a ring |
-| saved | solid, dimmer, to the goal line | solid |
-| blocked | short dashes, **stops where it was blocked** | hollow |
-| off target | long dashes, past the post — or past the goal line entirely if it cleared the bar | hollow |
+| goal | solid, full strength, into the goal | filled with **the centre punched out** |
+| saved | solid, dimmer, to the goal line | filled |
+| blocked | faint dashes, **stops where it was blocked** | hollow |
+| off target | faint dashes, past the post — or past the goal line entirely if it cleared the bar | hollow |
+
+`blocked` and `off_target` share a weight and are told apart by where the line
+**stops**, which is the more honest signal: one ends in a defender, the other
+runs past the post.
 
 The line is what makes the map readable. A dot says where a shot was struck; the
 line says what became of it. It is drawn from `end_x`/`end_y`/`end_z` on the
@@ -74,10 +81,24 @@ A shot over the bar crosses the goal line inside the posts when seen from above,
 so it is carried **past** the line rather than stopped at it. That is the
 top-down way to show height, and it reads `end_z` rather than guessing.
 
+**A goal never borrows size.** It is marked by punching the centre out of the
+dot, at exactly the radius its xG earns. An earlier version added a ring, which
+made every goal physically larger than any other mark — taking meaning from the
+one channel that already has some.
+
+**Every mark sits on a `midnight` halo.** It keeps overlapping dots countable in
+a crowded penalty area, and it evens the palettes: `lime` reads heavier than
+`floodlight` at an identical radius, and an identical halo on both normalises
+them.
+
+**Lines are drawn beneath every dot**, in one pass rather than per shot —
+otherwise a later shot's line crosses an earlier shot's dot, which is most of
+what makes this kind of plot look tangled.
+
 | Channel | Meaning |
 |---|---|
 | **Line** | what became of the shot, and where it ended |
-| **Radius** | xG — capped at roughly 1.6 m, because the line now carries the outcome |
+| **Radius** | xG — capped at roughly 1.3 m, because the line now carries the outcome |
 | **Colour** | team, and only team |
 
 Colour is never the only signal: line style and end point carry the outcome, so

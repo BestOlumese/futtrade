@@ -65,84 +65,113 @@ function radius(xg: number): number {
   return 0.55 + Math.sqrt(Math.max(xg, 0)) * 1.7;
 }
 
+/**
+ * Two line weights, not four.
+ *
+ * On target speaks; everything else recedes. Four distinct weights across
+ * twenty-six overlapping lines is the reason the first version read as busy —
+ * with a clear foreground and background, the eye finds the chances that
+ * mattered without having to decode a key.
+ *
+ * `blocked` and `off_target` share a weight and are told apart by where the line
+ * STOPS, which is the more honest signal anyway: a blocked shot ends in a
+ * defender, a wayward one runs past the post.
+ */
 type Style = {
-  /** How the line reads: a goal should be unmissable, a wild miss shouldn't. */
   width: number;
   opacity: number;
   dash?: string;
-  /** Solid dot at the origin? Only for shots that were on target. */
-  solid: boolean;
+  /** How the dot itself is drawn. */
+  dot: "filled" | "punched" | "hollow";
 };
 
 const STYLE: Record<string, Style> = {
-  goal: { width: 0.55, opacity: 1, solid: true },
-  saved: { width: 0.4, opacity: 0.62, solid: true },
-  blocked: { width: 0.4, opacity: 0.45, dash: "1.2 1", solid: false },
-  off_target: { width: 0.32, opacity: 0.34, dash: "2 1.6", solid: false },
+  // The centre punched out, at exactly the radius its xG earns. A goal used to
+  // take an extra ring, which made it physically bigger than every other dot —
+  // borrowing size from the one channel that already means something.
+  goal: { width: 0.5, opacity: 1, dot: "punched" },
+  saved: { width: 0.42, opacity: 0.68, dot: "filled" },
+  blocked: { width: 0.3, opacity: 0.32, dash: "1 1.1", dot: "hollow" },
+  off_target: { width: 0.3, opacity: 0.32, dash: "2.2 1.6", dot: "hollow" },
 };
 
-function ShotMark({ shot, colour }: { shot: Shot; colour: string }) {
-  const style = STYLE[shot.outcome] ?? STYLE.off_target;
+const styleFor = (outcome: string) => STYLE[outcome] ?? STYLE.off_target;
+
+/**
+ * A background-coloured disc under every mark.
+ *
+ * Two jobs. It separates overlapping dots so a crowded penalty area stays
+ * countable instead of merging into one shape — the standard fix for this kind
+ * of plot. And it evens out the palettes: lime reads heavier than floodlight at
+ * an identical radius, and an identical halo on both normalises them.
+ */
+const HALO_M = 0.34;
+
+/** Where the ball ended, given placement may be absent on older matches. */
+function endPoint(shot: Shot): { ex: number; ey: number } | null {
+  if (shot.endX === null || shot.endY === null) return null;
+  const over = shot.endZ !== null && shot.endZ > CROSSBAR_M;
+  // A shot over the bar crosses the goal line inside the posts when seen from
+  // above, so drawing it to x = 100 would look like a goal. Carrying it past the
+  // line is the top-down way to show height — reading `end_z`, not guessing.
+  return {
+    ex: over ? PITCH_X_M + 2.4 : toX(shot.endX),
+    ey: toY(shot.endY),
+  };
+}
+
+function label(shot: Shot): string {
+  const over = shot.endZ !== null && shot.endZ > CROSSBAR_M;
+  return (
+    `${shot.minute}\u2032 #${shot.shirt} \u2014 ${shot.outcome.replace("_", " ")}` +
+    `${over ? " (over the bar)" : ""}, ${shot.xg.toFixed(2)} xG`
+  );
+}
+
+function ShotLine({ shot, colour }: { shot: Shot; colour: string }) {
+  const end = endPoint(shot);
+  if (!end) return null;
+  const style = styleFor(shot.outcome);
+  return (
+    <line
+      x1={toX(shot.x)}
+      y1={toY(shot.y)}
+      x2={end.ex}
+      y2={end.ey}
+      stroke={colour}
+      strokeWidth={style.width}
+      strokeOpacity={style.opacity}
+      strokeDasharray={style.dash}
+      strokeLinecap="round"
+    />
+  );
+}
+
+function ShotDot({ shot, colour }: { shot: Shot; colour: string }) {
+  const style = styleFor(shot.outcome);
   const cx = toX(shot.x);
   const cy = toY(shot.y);
   const r = radius(shot.xg);
-
-  const over = shot.endZ !== null && shot.endZ > CROSSBAR_M;
-  const hasLine = shot.endX !== null && shot.endY !== null;
-
-  // A shot over the bar crosses the goal line inside the posts when seen from
-  // above, so drawing it to x = 100 would look like a goal. Carrying it past the
-  // line is the top-down way to show height — and it is reading `end_z`, not
-  // guessing.
-  const ex = hasLine ? (over ? PITCH_X_M + 2.4 : toX(shot.endX!)) : 0;
-  const ey = hasLine ? toY(shot.endY!) : 0;
-
-  const label =
-    `${shot.minute}′ #${shot.shirt} — ${shot.outcome.replace("_", " ")}` +
-    `${over ? " (over the bar)" : ""}, ${shot.xg.toFixed(2)} xG`;
+  const filled = style.dot !== "hollow";
 
   return (
     <g>
-      <title>{label}</title>
-
-      {hasLine && (
-        <line
-          x1={cx}
-          y1={cy}
-          x2={ex}
-          y2={ey}
-          stroke={colour}
-          strokeWidth={style.width}
-          strokeOpacity={style.opacity}
-          strokeDasharray={style.dash}
-          strokeLinecap="round"
-        />
-      )}
-
+      <title>{label(shot)}</title>
+      {/* The halo, drawn as a solid disc rather than a stroke so it reliably
+          covers whatever line passes behind it. */}
+      <circle cx={cx} cy={cy} r={r + HALO_M} fill="var(--color-midnight)" />
       <circle
         cx={cx}
         cy={cy}
         r={r}
-        fill={style.solid ? colour : "var(--color-midnight)"}
-        fillOpacity={style.solid ? 0.95 : 0.9}
+        fill={filled ? colour : "var(--color-midnight)"}
+        fillOpacity={filled ? 0.92 : 1}
         stroke={colour}
-        strokeWidth={0.35}
-        strokeOpacity={style.solid ? 1 : 0.75}
+        strokeWidth={0.3}
+        strokeOpacity={filled ? 0.95 : 0.8}
       />
-
-      {/* A goal gets a ring at the origin so it is findable at a glance — a
-          low-xG goal draws a small dot, and it is still the best moment of the
-          match. */}
-      {shot.outcome === "goal" && (
-        <circle
-          cx={cx}
-          cy={cy}
-          r={r + 1.4}
-          fill="none"
-          stroke={colour}
-          strokeWidth={0.35}
-          strokeOpacity={0.7}
-        />
+      {style.dot === "punched" && (
+        <circle cx={cx} cy={cy} r={r * 0.42} fill="var(--color-midnight)" />
       )}
     </g>
   );
@@ -239,17 +268,29 @@ export function ShotMap({
           strokeOpacity={0.9}
         />
 
+        {/* Every line beneath every dot. Drawn per-shot, a later shot's line
+            crosses an earlier shot's dot, which is most of what made the map
+            look tangled. */}
+        <g>
+          {shown.map((shot) => (
+            <ShotLine key={shot.seq} shot={shot} colour={colour} />
+          ))}
+        </g>
+
         {/* Goals last, so a goal is never buried under a wayward effort. */}
-        {shown
-          .filter((s) => s.outcome !== "goal")
-          .map((s) => (
-            <ShotMark key={s.seq} shot={s} colour={colour} />
-          ))}
-        {shown
-          .filter((s) => s.outcome === "goal")
-          .map((s) => (
-            <ShotMark key={s.seq} shot={s} colour={colour} />
-          ))}
+        <g>
+          {shown
+            .filter((s) => s.outcome !== "goal")
+            .map((shot) => (
+              <ShotDot key={shot.seq} shot={shot} colour={colour} />
+            ))}
+          {shown
+            .filter((s) => s.outcome === "goal")
+            .map((shot) => (
+              <ShotDot key={shot.seq} shot={shot} colour={colour} />
+            ))}
+        </g>
+
       </svg>
 
       <Legend anyPlacement={anyPlacement} shots={shown.length} />
@@ -269,30 +310,37 @@ function Legend({ anyPlacement, shots }: { anyPlacement: boolean; shots: number 
     <div className="flex flex-col gap-2 border-t border-steel/25 pt-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {keys.map(({ key, text }) => {
-          const style = STYLE[key];
+          const style = styleFor(key);
           return (
             <span key={key} className="flex items-center gap-1.5">
-              <svg width="26" height="10" viewBox="0 0 26 10" aria-hidden className="text-mute">
+              <svg width="30" height="12" viewBox="0 0 30 12" aria-hidden className="text-mute">
                 <line
-                  x1={5}
-                  y1={5}
-                  // Blocked stops short in the key too, because that is the
-                  // whole difference between it and a save.
-                  x2={key === "blocked" ? 14 : 25}
-                  y2={5}
+                  x1={6}
+                  y1={6}
+                  // Blocked stops short in the key too, because where the line
+                  // ends is the whole difference between it and a wayward one.
+                  x2={key === "blocked" ? 15 : 29}
+                  y2={6}
                   stroke="currentColor"
-                  strokeWidth={1.2}
-                  strokeOpacity={style.opacity}
-                  strokeDasharray={style.dash ? "3 2" : undefined}
+                  strokeWidth={key === "goal" || key === "saved" ? 1.5 : 1}
+                  // Lifted from the map's opacity: the faint weights are meant
+                  // to recede on a 500px pitch, but at key size they vanish
+                  // entirely, and a legend nobody can read is not a legend.
+                  strokeOpacity={Math.max(style.opacity, 0.72)}
+                  strokeDasharray={style.dash ? "2.5 2" : undefined}
                 />
+                <circle cx={6} cy={6} r={4} fill="var(--color-surface)" />
                 <circle
-                  cx={5}
-                  cy={5}
-                  r={2.6}
-                  fill={style.solid ? "currentColor" : "var(--color-surface)"}
+                  cx={6}
+                  cy={6}
+                  r={3.2}
+                  fill={style.dot === "hollow" ? "var(--color-surface)" : "currentColor"}
                   stroke="currentColor"
                   strokeWidth={1}
                 />
+                {style.dot === "punched" && (
+                  <circle cx={6} cy={6} r={1.35} fill="var(--color-surface)" />
+                )}
               </svg>
               <span className="font-sans text-xs text-mute">{text}</span>
             </span>
